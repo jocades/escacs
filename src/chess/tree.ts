@@ -1,5 +1,5 @@
 import type { Move } from "chess.js"
-import type { Key } from "chessground/types"
+import type { Key, Color } from "chessground/types"
 
 export interface Cursor {
   var: number
@@ -9,11 +9,12 @@ export interface Cursor {
 export interface MoveNode {
   id: Cursor
   move: Move
-  lines?: MoveNode[]
+  variations?: number[]
   prev: Cursor
 }
 
 export interface State {
   fen: string
   lastMove: [Key, Key] | undefined
+  orientation: Color
 }

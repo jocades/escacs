@@ -21,7 +21,6 @@
   let { chess, state, onMove }: ChessboardProps = $props();
 
   let cg: Board;
-
   onMount(() => {
     cg = Chessground(document.querySelector("#board")!, {
       movable: {
@@ -41,6 +40,7 @@
       movable: { dests: toDests(chess) },
       check: chess.isCheck(),
       lastMove: state.lastMove,
+      orientation: state.orientation,
     });
   });
 </script>
