@@ -1,14 +1,14 @@
 <script lang="ts">
-  import "../styles/board/base.css";
-  import "../styles/board/brown.css";
-  import "../styles/board/pieces.css";
+  import "./styles/base.css";
+  import "./styles/brown.css";
+  import "./styles/pieces.css";
 
   import type { Chess } from "chess.js";
   import { Chessground } from "chessground";
   import type { Api as Board } from "chessground/api";
 
   import { toColor, toDests } from "../chess/util";
-  import type { State } from "../chess/tree";
+  import type { State } from "../chess/tree.svelte";
 
   import { onMount } from "svelte";
 
