@@ -3,20 +3,36 @@
   import TreeView from "$lib/chess/tree-view.svelte";
 
   import { Chess } from "chess.js";
-  import { Tree, type State } from "$lib/chess/tree.svelte";
+  import { Tree, type MoveNode, type State } from "$lib/chess/tree.svelte";
   import { onMount } from "svelte";
 
   const chess = new Chess();
 
   const sounds = {
     move: new Audio("sounds/move-self.mp3"),
+    capture: new Audio("sounds/move-capture.mp3"),
+    check: new Audio("sounds/move-check.mp3"),
+    castle: new Audio("sounds/move-castle.mp3"),
   };
 
-  // function playSound(kind: keyof typeof sounds) {
-  //   if (!sounds[kind]) return;
-  //   const sound = new Audio(sounds[kind]);
-  //   sound.play();
-  // }
+  function playSound(kind: keyof typeof sounds) {
+    const sound = sounds[kind];
+    sound.pause();
+    sound.currentTime = 0;
+    sound.play();
+  }
+
+  function playMoveSound(node: MoveNode) {
+    if (chess.inCheck()) {
+      playSound("check");
+    } else if (node.move.isCapture()) {
+      playSound("capture");
+    } else if (node.move.isKingsideCastle() || node.move.isQueensideCastle()) {
+      playSound("castle");
+    } else {
+      playSound("move");
+    }
+  }
 
   const _state: State = $state({
     fen: chess.fen(),
@@ -37,13 +53,11 @@
     } else {
       if (!node) return;
       chess.load(node.move.after);
+      playMoveSound(node);
     }
 
     _state.fen = chess.fen();
     _state.lastMove = isStart ? undefined : [node.move.from, node.move.to];
-
-    sounds.move.currentTime = 0;
-    sounds.move.play();
   });
 
   function onMove(from: string, to: string) {
@@ -79,29 +93,33 @@
   ].join("\n");
 
   const longPgn = `
-[Event "Hourly SuperBlitz Arena"]
-[Site "https://lichess.org/55tGMOlU"]
-[Date "2025.08.28"]
-[White "Meerbos14"]
-[Black "admin112"]
-[Result "1/2-1/2"]
-[GameId "55tGMOlU"]
-[UTCDate "2025.08.28"]
-[UTCTime "15:55:04"]
-[WhiteElo "1992"]
-[BlackElo "2050"]
-[WhiteRatingDiff "+1"]
-[BlackRatingDiff "+0"]
-[Variant "Standard"]
-[TimeControl "180+0"]
-[ECO "B10"]
-[Opening "Caro-Kann Defense: Accelerated Panov Attack"]
-[Termination "Normal"]
+[Event "Live Chess"]
+[Site "Chess.com"]
+[Date "2025.08.26"]
+[Round "?"]
+[White "d4jordi"]
+[Black "viny11"]
+[Result "1-0"]
+[TimeControl "180"]
+[WhiteElo "2044"]
+[BlackElo "2137"]
+[Termination "d4jordi won on time"]
+[ECO "D30"]
+[EndTime "15:04:42 GMT+0000"]
+[Link "https://www.chess.com/game/live/142359911508?move=0"]
 
-1. e4 c6 2. c4 d5 3. cxd5 cxd5 4. Nc3 Nc6 5. exd5 Nb4 6. Bc4 Bd7 7. Nf3 Nf6 8. O-O g6 9. a3 Na6 10. d4 Bg7 11. d6 e6 12. d5 O-O 13. dxe6 Bxe6 14. Bxe6 fxe6 15. Re1 Re8 16. Ne5 Nc5 17. b4 Ncd7 18. Bb2 Rc8 19. Nb5 Nxe5 20. Bxe5 Qb6 21. d7 Qxb5 22. dxc8=Q Rxc8 23. Bxf6 Bxf6 24. Rxe6 Bxa1 25. Qxa1 Qc4 26. Qe1 Qc1 27. g3 Qxe1+ 28. Rxe1 Rc3 29. Re3 Rc1+ 30. Kg2 Ra1 31. Rc3 a6 32. Kf3 Kg7 33. Rc7+ Kf6 34. Rxb7 Rxa3+ 35. Kf4 Rb3 36. f3 a5 37. h4 Rxb4+ 38. Rxb4 axb4 39. Ke3 Kf5 40. Kd3 h5 41. Kc4 Ke5 42. Kxb4 Kd4 43. Kb5 Ke3 44. g4 Kf4 45. gxh5 gxh5 46. Kc4 Kxf3 47. Kd3 Kg3 48. Ke3 Kxh4 49. Kf2 Kh3 50. Kf3 Kh2 51. Kf2 h4 52. Kf1 h3 53. Kf2 Kh1 54. Kf1 Kh2 55. Kf2 Kh1 56. Kf1 Kh2 1/2-1/2`;
+1. d4 e6 2. c4 d5 3. Nf3 Nf6 4. g3 dxc4 5. Bg2 c6 6. O-O b5 7. a4 Bb7 8. Qc2 a6
+9. Rd1 Qc7 10. Bg5 Be7 11. e4 h6 12. Bxf6 Bxf6 13. d5 cxd5 14. exd5 Bxd5 15.
+Rxd5 exd5 16. Qe2+ Be7 17. Nc3 Qd6 18. Re1 Nc6 19. Nxd5 Qxd5 20. Nh4 Qxg2+ 21.
+Kxg2 O-O 22. Nf5 Bf6 23. Qf3 Rac8 24. Nd6 Rc7 25. axb5 Nd4 26. Qd5 Rd7 27. Qxc4
+Rxd6 28. bxa6 Ra8 29. Ra1 Ra7 30. Qc8+ Kh7 31. Ra4 Ne6 32. b4 Rd4 33. b5 Rxa4
+34. Qc2+ g6 35. Qxa4 Bd4 36. Qa5 Re7 37. b6 Ng5 38. b7 Re2 39. Qxg5 Rxf2+ 40.
+Kh3 hxg5 41. b8=Q f5 42. Qf8 Bg7 43. Qf7 g4+ 44. Kh4 Rxh2+ 45. Kg5 Ra2 46. a7
+Ra6 47. Qb7 Ra2 48. a8=Q Rxa8 49. Qxa8 Bh6+ 50. Kf6 Bg7+ 51. Ke6 g5 52. Qb7 f4
+53. Qd5 1-0`;
 
   onMount(() => {
-    tree.loadPgn(chess, longPgn);
+    // tree.loadPgn(chess, longPgn);
 
     document.addEventListener("keydown", onKeyDown);
 
@@ -111,7 +129,7 @@
   });
 </script>
 
-<main class="min-h-[100vh] flex items-center justify-center">
+<main class="flex h-full justify-center">
   <div class="grid grid-cols-2 gap-x-4">
     <Chessboard {chess} state={_state} {onMove} />
     <TreeView {tree} />

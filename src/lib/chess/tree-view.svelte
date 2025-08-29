@@ -33,29 +33,68 @@
     onclick={() => tree.setNode(node)}
     class={cn(
       "cursor-pointer px-0.5",
-      node === tree.at() && "bg-background/50 rounded",
+      node === tree.at() && "bg-zinc-200/20 rounded",
     )}
   >
     {node.move.san}
   </button>
 {/snippet}
 
-<div class="flex flex-col h-full max-h-[80vh] bg-zinc-700">
+<div class="flex flex-col h-full max-h-[80vh] bg-sidebar">
   <h2 class="px-2 py-2 font-bold">Moves</h2>
   <div class="flex-1 overflow-y-auto">
-    <table class="w-full [&_td]:py-1">
+    <table class="w-full [&_td]:py-1 text-sm">
       <tbody>
         {#each pairs as pair, index}
-          <tr class={cn(index % 2 === 0 ? "bg-zinc-500" : "bg-zinc-500/25")}>
-            <td class="pl-2">{index + 1}.</td>
+          <tr class={cn(index % 2 === 0 ? "bg-sidebar" : "bg-zinc-500/10")}>
+            <td class="pl-2 font-bold text-muted-foreground">{index + 1}.</td>
             <td>
-              {#if pair[0]}{@render cell(pair[0])}{/if}
+              {#if pair[0]}
+                {@render cell(pair[0])}
+              {/if}
             </td>
             <td>
               {#if pair[1]}{@render cell(pair[1])}{/if}
             </td>
-            <td class="w-1/3"></td>
+            <td class="w-1/2"></td>
           </tr>
+
+          {#if pair[0]?.variations}
+            {#each pair[0].variations as v}
+              <tr class={cn(index % 2 === 0 ? "bg-sidebar" : "bg-zinc-500/10")}>
+                <td
+                  colspan="4"
+                  class="pl-16 text-sm italic text-balance break-words whitespace-normal"
+                >
+                  (
+                  {#each tree.nodes[v] as node, vi}
+                    {@render cell(node)}
+                    {#if vi < tree.nodes[v].length - 1}{" "}{/if}
+                  {/each})
+                </td>
+              </tr>
+            {/each}
+          {/if}
+
+          {#if pair[1]?.variations}
+            {#each pair[1].variations as v}
+              <tr
+                class={cn(index % 2 === 0 ? "bg-zinc-500" : "bg-zinc-500/25")}
+              >
+                <td
+                  colspan="4"
+                  class="pl-16 italic break-words whitespace-normal"
+                >
+                  ( ...
+                  {#each tree.nodes[v] as node, vi}
+                    {@render cell(node)}
+                    {#if vi < tree.nodes[v].length - 1}{" "}{/if}
+                  {/each}
+                  )
+                </td>
+              </tr>
+            {/each}
+          {/if}
         {/each}
       </tbody>
     </table>
@@ -65,7 +104,9 @@
       <Button onclick={() => tree.prev()} size="icon">
         <ChevronLeftIcon />
       </Button>
-      <Button size="icon"><PlayIcon fill="true" /></Button>
+      <Button onclick={() => tree.play()} size="icon"
+        ><PlayIcon fill="true" /></Button
+      >
       <Button onclick={() => tree.next()} size="icon">
         <ChevronRightIcon />
       </Button>

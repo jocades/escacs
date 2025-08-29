@@ -26,6 +26,7 @@ export class Tree {
    */
   nodes: MoveNode[][] = $state([[]])
   cursor: Cursor = $state({ var: 0, num: -1 })
+  interval: number | undefined
 
   get(v: number, n: number) {
     return this.nodes[v][n]
@@ -136,5 +137,19 @@ export class Tree {
 
   isStart() {
     return this.cursor.var === 0 && this.cursor.num === -1
+  }
+
+  isAtEnd() {
+    return this.cursor.var === 0 && this.cursor.num === this.mainLine.length - 1
+  }
+
+  play() {
+    this.interval = setInterval(() => {
+      if (this.isAtEnd()) {
+        clearInterval(this.interval)
+        return
+      }
+      this.next()
+    }, 250)
   }
 }
