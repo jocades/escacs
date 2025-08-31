@@ -7,12 +7,14 @@
   import { onMount } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import { Button } from "$lib/components/ui/button";
+  import Analysis from "$lib/chess/analysis.svelte";
+  import Evaluation from "$lib/chess/evaluation.svelte";
 
   const chess = new Chess();
 
   async function search() {
-    const result = await invoke("go", { fen: chess.fen() });
-    console.log(result);
+    // const result = await invoke("go", { fen: chess.fen() });
+    // console.log(result);
   }
 
   const sounds = {
@@ -132,7 +134,7 @@ Ra6 47. Qb7 Ra2 48. a8=Q Rxa8 49. Qxa8 Bh6+ 50. Kf6 Bg7+ 51. Ke6 g5 52. Qb7 f4
   const chan = new Channel();
 
   async function startEngine() {
-    await invoke("start_engine", { chan });
+    // await invoke("start_engine", { chan });
   }
 
   let lastInfo: { value: any } = $state({ value: null });
@@ -156,7 +158,13 @@ Ra6 47. Qb7 Ra2 48. a8=Q Rxa8 49. Qxa8 Bh6+ 50. Kf6 Bg7+ 51. Ke6 g5 52. Qb7 f4
 
 <main class="flex h-full justify-center">
   <div class="grid grid-cols-2 gap-x-4">
-    <Chessboard {chess} state={_state} {onMove} />
-    <TreeView {tree} info={lastInfo} />
+    <div class="flex gap-2 h-[500px]">
+      <Evaluation score={200} />
+      <Chessboard {chess} state={_state} {onMove} />
+    </div>
+    <div class="flex flex-col gap-y-2">
+      <Analysis />
+      <TreeView {tree} info={lastInfo} />
+    </div>
   </div>
 </main>

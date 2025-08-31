@@ -8,7 +8,7 @@
   let result = $state();
 
   async function greet() {
-    result = await invoke("test_what");
+    // result = await invoke("test_what");
   }
 
   onMount(() => {
