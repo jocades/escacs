@@ -1,10 +1,15 @@
 <script lang="ts">
   import type { MoveNode, Tree } from "./tree.svelte";
   import { Button } from "$lib/components/ui/button";
-  import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from "@lucide/svelte";
+  import {
+    ChevronLeftIcon,
+    ChevronRightIcon,
+    PauseIcon,
+    PlayIcon,
+  } from "@lucide/svelte";
   import { cn } from "$lib/utils";
 
-  const { tree }: { tree: Tree } = $props();
+  const { tree, info }: { tree: Tree; info: any } = $props();
 
   const pairs = $derived.by(() => {
     const result = [];
@@ -25,6 +30,13 @@
         behavior: "smooth",
       });
   });
+
+  $effect(() => {
+    console.log("info changed");
+    console.log({ value: info.value });
+  });
+
+  const pv = $derived.by(() => info.value?.pv.join(" "));
 </script>
 
 {#snippet cell(node: MoveNode)}
@@ -40,8 +52,11 @@
   </button>
 {/snippet}
 
-<div class="flex flex-col h-full max-h-[80vh] bg-sidebar">
+<div class="flex flex-col h-full max-h-[80vh] max-w-[500px] bg-sidebar">
   <h2 class="px-2 py-2 font-bold">Moves</h2>
+  <div>
+    <p class="truncate">{pv}</p>
+  </div>
   <div class="flex-1 overflow-y-auto">
     <table class="w-full [&_td]:py-1 text-sm">
       <tbody>
@@ -49,9 +64,7 @@
           <tr class={cn(index % 2 === 0 ? "bg-sidebar" : "bg-zinc-500/10")}>
             <td class="pl-2 font-bold text-muted-foreground">{index + 1}.</td>
             <td>
-              {#if pair[0]}
-                {@render cell(pair[0])}
-              {/if}
+              {#if pair[0]}{@render cell(pair[0])}{/if}
             </td>
             <td>
               {#if pair[1]}{@render cell(pair[1])}{/if}
@@ -104,9 +117,13 @@
       <Button onclick={() => tree.prev()} size="icon">
         <ChevronLeftIcon />
       </Button>
-      <Button onclick={() => tree.play()} size="icon"
-        ><PlayIcon fill="true" /></Button
-      >
+      <Button onclick={() => tree.play()} size="icon">
+        {#if tree.isPlaying}
+          <PauseIcon fill="true" />
+        {:else}
+          <PlayIcon fill="true" />
+        {/if}
+      </Button>
       <Button onclick={() => tree.next()} size="icon">
         <ChevronRightIcon />
       </Button>
@@ -114,24 +131,24 @@
   </div>
 </div>
 
-<style>
-  /* Works in Chrome, Edge, Safari */
-  .flex-1::-webkit-scrollbar {
-    width: 6px; /* thin */
-  }
-
-  .flex-1::-webkit-scrollbar-track {
-    background: transparent; /* no rectangle */
-  }
-
-  .flex-1::-webkit-scrollbar-thumb {
-    background-color: black; /* subtle thumb */
-    border-radius: 4px;
-  }
-
-  /* Works in Firefox */
-  .flex-1 {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(100, 100, 100, 0.5) transparent;
-  }
-</style>
+<!-- <style> -->
+<!--   /* Works in Chrome, Edge, Safari */ -->
+<!--   .flex-1::-webkit-scrollbar { -->
+<!--     width: 6px; /* thin */ -->
+<!--   } -->
+<!---->
+<!--   .flex-1::-webkit-scrollbar-track { -->
+<!--     background: transparent; /* no rectangle */ -->
+<!--   } -->
+<!---->
+<!--   .flex-1::-webkit-scrollbar-thumb { -->
+<!--     background-color: black; /* subtle thumb */ -->
+<!--     border-radius: 4px; -->
+<!--   } -->
+<!---->
+<!--   /* Works in Firefox */ -->
+<!--   .flex-1 { -->
+<!--     scrollbar-width: thin; -->
+<!--     scrollbar-color: rgba(100, 100, 100, 0.5) transparent; -->
+<!--   } -->
+<!-- </style> -->

@@ -43,7 +43,7 @@
         items: [
           {
             title: "History",
-            url: "#",
+            url: "/test",
           },
           {
             title: "Starred",

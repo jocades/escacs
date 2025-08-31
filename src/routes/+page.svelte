@@ -5,19 +5,27 @@
   import { Chess } from "chess.js";
   import { Tree, type MoveNode, type State } from "$lib/chess/tree.svelte";
   import { onMount } from "svelte";
+  import { Channel, invoke } from "@tauri-apps/api/core";
+  import { Button } from "$lib/components/ui/button";
 
   const chess = new Chess();
+
+  async function search() {
+    const result = await invoke("go", { fen: chess.fen() });
+    console.log(result);
+  }
 
   const sounds = {
     move: new Audio("sounds/move-self.mp3"),
     capture: new Audio("sounds/move-capture.mp3"),
     check: new Audio("sounds/move-check.mp3"),
     castle: new Audio("sounds/move-castle.mp3"),
+    promotion: new Audio("sounds/move-promotion.mp3"),
   };
 
   function playSound(kind: keyof typeof sounds) {
     const sound = sounds[kind];
-    sound.pause();
+    // sound.pause();
     sound.currentTime = 0;
     sound.play();
   }
@@ -27,6 +35,8 @@
       playSound("check");
     } else if (node.move.isCapture()) {
       playSound("capture");
+    } else if (node.move.isPromotion()) {
+      playSound("promotion");
     } else if (node.move.isKingsideCastle() || node.move.isQueensideCastle()) {
       playSound("castle");
     } else {
@@ -58,6 +68,7 @@
 
     _state.fen = chess.fen();
     _state.lastMove = isStart ? undefined : [node.move.from, node.move.to];
+    search();
   });
 
   function onMove(from: string, to: string) {
@@ -118,10 +129,24 @@ Kh3 hxg5 41. b8=Q f5 42. Qf8 Bg7 43. Qf7 g4+ 44. Kh4 Rxh2+ 45. Kg5 Ra2 46. a7
 Ra6 47. Qb7 Ra2 48. a8=Q Rxa8 49. Qxa8 Bh6+ 50. Kf6 Bg7+ 51. Ke6 g5 52. Qb7 f4
 53. Qd5 1-0`;
 
-  onMount(() => {
-    // tree.loadPgn(chess, longPgn);
+  const chan = new Channel();
 
+  async function startEngine() {
+    await invoke("start_engine", { chan });
+  }
+
+  let lastInfo: { value: any } = $state({ value: null });
+
+  chan.onmessage = (info: any) => {
+    console.log("onMessage", info.pv);
+    lastInfo.value = info;
+  };
+
+  onMount(() => {
+    tree.loadPgn(chess, longPgn);
     document.addEventListener("keydown", onKeyDown);
+
+    // startEngine();
 
     return () => {
       document.removeEventListener("keydown", onKeyDown);
@@ -132,6 +157,6 @@ Ra6 47. Qb7 Ra2 48. a8=Q Rxa8 49. Qxa8 Bh6+ 50. Kf6 Bg7+ 51. Ke6 g5 52. Qb7 f4
 <main class="flex h-full justify-center">
   <div class="grid grid-cols-2 gap-x-4">
     <Chessboard {chess} state={_state} {onMove} />
-    <TreeView {tree} />
+    <TreeView {tree} info={lastInfo} />
   </div>
 </main>
