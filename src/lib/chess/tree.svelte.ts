@@ -15,6 +15,7 @@ export interface MoveNode {
 
 export interface State {
   fen: string
+  turn: Color
   lastMove: [Key, Key] | undefined
   orientation: Color
 }

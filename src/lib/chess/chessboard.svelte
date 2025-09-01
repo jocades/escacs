@@ -36,7 +36,7 @@
   $effect(() => {
     cg.set({
       fen: state.fen,
-      turnColor: toColor(chess),
+      turnColor: state.turn,
       movable: { dests: toDests(chess) },
       check: chess.isCheck(),
       lastMove: state.lastMove,

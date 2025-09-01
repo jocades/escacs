@@ -9,7 +9,7 @@
   } from "@lucide/svelte";
   import { cn } from "$lib/utils";
 
-  const { tree, info }: { tree: Tree; info: any } = $props();
+  const { tree }: { tree: Tree; info: any } = $props();
 
   const pairs = $derived.by(() => {
     const result = [];
@@ -30,13 +30,6 @@
         behavior: "smooth",
       });
   });
-
-  $effect(() => {
-    console.log("info changed");
-    console.log({ value: info.value });
-  });
-
-  const pv = $derived.by(() => info.value?.pv.join(" "));
 </script>
 
 {#snippet cell(node: MoveNode)}
@@ -54,9 +47,6 @@
 
 <div class="flex flex-col h-full max-h-[80vh] max-w-[500px] bg-sidebar">
   <h2 class="px-2 py-2 font-bold">Moves</h2>
-  <div>
-    <p class="truncate">{pv}</p>
-  </div>
   <div class="flex-1 overflow-y-auto">
     <table class="w-full [&_td]:py-1 text-sm">
       <tbody>

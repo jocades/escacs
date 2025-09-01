@@ -17,8 +17,8 @@
   const label = $derived((score / 100).toFixed(2));
 </script>
 
-<div class="flex items-center border">
-  <div class="relative h-full w-4 overflow-hidden" role="img">
+<div class="flex items-center">
+  <div class="relative h-full w-4 overflow-hidden border" role="img">
     <div
       class="absolute bottom-0 left-0 w-full bg-white"
       style={`height:${whitePercentage}%; transition: height 200ms ease`}

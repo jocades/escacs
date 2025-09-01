@@ -1,3 +1,5 @@
+use std::sync::atomic::AtomicUsize;
+
 use dashmap::DashMap;
 use tauri::{Builder, Manager, State};
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -8,6 +10,7 @@ pub mod chess;
 
 struct AppState {
     handle: Handle,
+    client_restart_count: AtomicUsize,
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -21,47 +24,66 @@ struct Handler {
     engines: Vec<Engine>,
 }
 
+static mut CALL_COUNT: usize = 0;
+
 enum Op {
-    Init(tauri::ipc::Channel<Info>),
+    Start(tauri::ipc::Channel<Info>, oneshot::Sender<()>),
     Go(Go),
 }
 
-struct EngineManager {
-    engines: Vec<(Engine, Visitor)>,
+struct EngineEntry {
+    engine: Engine,
+    visitor: Visitor,
+    stop_tx: mpsc::Sender<()>,
+}
+
+pub struct EngineManager {
+    engines: Vec<EngineEntry>,
     rx: mpsc::Receiver<Op>,
 }
 
-struct Visitor {
+pub struct Visitor {
     chan: tauri::ipc::Channel<Info>,
 }
 
 impl chess::Visitor for Visitor {
     fn info(&mut self, info: Info) {
-        println!("INFO: {info:?}");
         self.chan.send(info).unwrap();
     }
 
-    fn best(&mut self, best: BestMove) {
-        println!("BEST: {best:?}");
-    }
+    fn best(&mut self, best: BestMove) {}
 }
 
 impl EngineManager {
     async fn run(&mut self) {
         while let Some(op) = self.rx.recv().await {
             match op {
-                Op::Init(chan) => {
+                Op::Start(chan, resp) => {
                     if self.engines.len() > 0 {
                         continue;
                     }
-                    let mut engine = Engine::new("stockfish").unwrap();
+                    let (stop_tx, stop_rx) = mpsc::channel(32);
+                    let mut engine = Engine::new("stockfish", stop_rx).unwrap();
                     engine.uci().await.unwrap();
                     engine.isready().await.unwrap();
                     let visitor = Visitor { chan };
-                    self.engines.push((engine, visitor));
+                    self.engines.push(EngineEntry {
+                        engine,
+                        visitor,
+                        stop_tx,
+                    });
+                    _ = resp.send(());
                 }
                 Op::Go(job) => {
-                    let (engine, visitor) = &mut self.engines[0];
+                    let EngineEntry {
+                        engine,
+                        visitor,
+                        stop_tx,
+                    } = &mut self.engines[0];
+                    if engine.is_searching {
+                        println!("manager stop");
+                        stop_tx.send(()).await.unwrap();
+                    }
                     engine.go_with(job, visitor).await.unwrap();
                 }
             }
@@ -69,12 +91,12 @@ impl EngineManager {
     }
 }
 
-struct Handle {
+pub struct Handle {
     tx: mpsc::Sender<Op>,
 }
 
 impl Handle {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(100);
         let mut manager = EngineManager {
             engines: Vec::new(),
@@ -83,6 +105,19 @@ impl Handle {
         tauri::async_runtime::spawn(async move { manager.run().await });
         Self { tx }
     }
+
+    pub async fn start_engine(&self, chan: tauri::ipc::Channel<Info>) {
+        let (tx, rx) = oneshot::channel();
+        self.tx
+            .send(Op::Start(chan, tx))
+            .await
+            .expect("manager died");
+        rx.await.unwrap();
+    }
+
+    pub async fn go(&self, job: Go) {
+        self.tx.send(Op::Go(job)).await.expect("manager died");
+    }
 }
 
 #[tauri::command]
@@ -90,15 +125,25 @@ async fn start_engine(
     state: State<'_, AppState>,
     chan: tauri::ipc::Channel<Info>,
 ) -> Result<(), String> {
-    println!("start engine");
-    state.handle.tx.send(Op::Init(chan)).await.unwrap();
+    let n = state
+        .client_restart_count
+        .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    if n == 0 {
+        println!("start engine");
+        state.handle.start_engine(chan).await;
+    }
     Ok(())
 }
 
 #[tauri::command]
 async fn go(fen: &str, state: State<'_, AppState>) -> Result<(), String> {
-    let job = Go::new().fen(fen).depth(15);
-    state.handle.tx.send(Op::Go(job)).await.unwrap();
+    unsafe {
+        CALL_COUNT += 1;
+        println!("call_count = {CALL_COUNT}");
+    };
+    println!("go fen: {fen}");
+    let job = Go::new().fen(fen).depth(26);
+    state.handle.go(job).await;
     Ok(())
 }
 
@@ -108,14 +153,28 @@ fn test_what() -> &'static str {
     "Hello World!"
 }
 
+#[tauri::command]
+fn call_count() {
+    unsafe {
+        CALL_COUNT += 1;
+        println!("call_count = {CALL_COUNT}");
+    };
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_engine, go, test_what])
+        .invoke_handler(tauri::generate_handler![
+            start_engine,
+            go,
+            test_what,
+            call_count
+        ])
         .setup(|app| {
             let state = AppState {
                 handle: Handle::new(),
+                client_restart_count: AtomicUsize::default(),
             };
             app.manage(state);
             Ok(())

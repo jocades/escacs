@@ -6,16 +6,15 @@
   import { Tree, type MoveNode, type State } from "$lib/chess/tree.svelte";
   import { onMount } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
-  import { Button } from "$lib/components/ui/button";
   import Analysis from "$lib/chess/analysis.svelte";
   import Evaluation from "$lib/chess/evaluation.svelte";
+  import ipc from "$lib/ipc";
+  import { Button } from "$lib/components/ui/button";
+  import { longPgn, shortPgn } from "$lib/chess/test-pgns";
+  import type { Info, Score } from "$lib/chess/types";
+  import { toColor } from "$lib/chess/util";
 
   const chess = new Chess();
-
-  async function search() {
-    // const result = await invoke("go", { fen: chess.fen() });
-    // console.log(result);
-  }
 
   const sounds = {
     move: new Audio("sounds/move-self.mp3"),
@@ -46,8 +45,9 @@
     }
   }
 
-  const _state: State = $state({
+  const s: State = $state({
     fen: chess.fen(),
+    turn: toColor(chess),
     lastMove: undefined,
     orientation: "white",
   });
@@ -55,6 +55,10 @@
   const tree = new Tree();
 
   $inspect(tree.cursor, tree.nodes);
+
+  let engineActive = $state(false);
+
+  let goCount = 0;
 
   $effect(() => {
     const node = tree.at();
@@ -68,9 +72,19 @@
       playMoveSound(node);
     }
 
-    _state.fen = chess.fen();
-    _state.lastMove = isStart ? undefined : [node.move.from, node.move.to];
-    search();
+    // use this to invoke since `s.fen` will trigger causing a invoke call.
+    const fen = chess.fen();
+    s.fen = fen;
+    s.lastMove = isStart ? undefined : [node.move.from, node.move.to];
+    s.turn = toColor(chess);
+
+    if (engineActive) {
+      goCount++;
+      console.log(goCount);
+      // invoke("call_count");
+      ipc.go(fen);
+      // invoke("go", { fen: chess.fen() });
+    }
   });
 
   function onMove(from: string, to: string) {
@@ -97,58 +111,37 @@
     }
   }
 
-  const pgn = [
-    '[Annotator "User"]',
-    `[Date "${new Date().toLocaleDateString()}"]`,
-    "",
-    "1. d4 {comment 1} d5 {comment 1.5}",
-    "2. c4 {comment 2}",
-  ].join("\n");
+  const chan = new Channel<Info>();
 
-  const longPgn = `
-[Event "Live Chess"]
-[Site "Chess.com"]
-[Date "2025.08.26"]
-[Round "?"]
-[White "d4jordi"]
-[Black "viny11"]
-[Result "1-0"]
-[TimeControl "180"]
-[WhiteElo "2044"]
-[BlackElo "2137"]
-[Termination "d4jordi won on time"]
-[ECO "D30"]
-[EndTime "15:04:42 GMT+0000"]
-[Link "https://www.chess.com/game/live/142359911508?move=0"]
+  let info: Info | undefined = $state();
 
-1. d4 e6 2. c4 d5 3. Nf3 Nf6 4. g3 dxc4 5. Bg2 c6 6. O-O b5 7. a4 Bb7 8. Qc2 a6
-9. Rd1 Qc7 10. Bg5 Be7 11. e4 h6 12. Bxf6 Bxf6 13. d5 cxd5 14. exd5 Bxd5 15.
-Rxd5 exd5 16. Qe2+ Be7 17. Nc3 Qd6 18. Re1 Nc6 19. Nxd5 Qxd5 20. Nh4 Qxg2+ 21.
-Kxg2 O-O 22. Nf5 Bf6 23. Qf3 Rac8 24. Nd6 Rc7 25. axb5 Nd4 26. Qd5 Rd7 27. Qxc4
-Rxd6 28. bxa6 Ra8 29. Ra1 Ra7 30. Qc8+ Kh7 31. Ra4 Ne6 32. b4 Rd4 33. b5 Rxa4
-34. Qc2+ g6 35. Qxa4 Bd4 36. Qa5 Re7 37. b6 Ng5 38. b7 Re2 39. Qxg5 Rxf2+ 40.
-Kh3 hxg5 41. b8=Q f5 42. Qf8 Bg7 43. Qf7 g4+ 44. Kh4 Rxh2+ 45. Kg5 Ra2 46. a7
-Ra6 47. Qb7 Ra2 48. a8=Q Rxa8 49. Qxa8 Bh6+ 50. Kf6 Bg7+ 51. Ke6 g5 52. Qb7 f4
-53. Qd5 1-0`;
-
-  const chan = new Channel();
-
-  async function startEngine() {
-    // await invoke("start_engine", { chan });
+  function unaryScore(n: number) {
+    return chess.turn() === "w" ? n : -n;
   }
 
-  let lastInfo: { value: any } = $state({ value: null });
+  function normalizeScore(score: Score) {
+    if (score.cp) score.cp = unaryScore(score.cp);
+    else score.mate = unaryScore(score.mate);
+  }
 
-  chan.onmessage = (info: any) => {
-    console.log("onMessage", info.pv);
-    lastInfo.value = info;
+  chan.onmessage = (data) => {
+    console.log("onMessage", data);
+    // normalizeScore(data.score);
+    info = data;
   };
 
+  const score = $derived.by(() => {
+    if (!info || !info.score?.cp) return 0;
+    return chess.turn() === "w" ? info.score?.cp : -info.score?.cp;
+  });
+
   onMount(() => {
-    tree.loadPgn(chess, longPgn);
+    // tree.loadPgn(chess, shortPgn);
     document.addEventListener("keydown", onKeyDown);
 
-    // startEngine();
+    ipc.startEngine(chan).then(() => {
+      engineActive = true;
+    });
 
     return () => {
       document.removeEventListener("keydown", onKeyDown);
@@ -158,13 +151,16 @@ Ra6 47. Qb7 Ra2 48. a8=Q Rxa8 49. Qxa8 Bh6+ 50. Kf6 Bg7+ 51. Ke6 g5 52. Qb7 f4
 
 <main class="flex h-full justify-center">
   <div class="grid grid-cols-2 gap-x-4">
-    <div class="flex gap-2 h-[500px]">
-      <Evaluation score={200} />
-      <Chessboard {chess} state={_state} {onMove} />
+    <div class="flex flex-col gap-2">
+      <div class="flex gap-2 h-[500px]">
+        <Evaluation {score} />
+        <Chessboard {chess} state={s} {onMove} />
+      </div>
+      <Button onclick={() => ipc.go(chess.fen())}>Go</Button>
     </div>
     <div class="flex flex-col gap-y-2">
-      <Analysis />
-      <TreeView {tree} info={lastInfo} />
+      <Analysis state={s} {info} />
+      <TreeView {tree} {info} />
     </div>
   </div>
 </main>

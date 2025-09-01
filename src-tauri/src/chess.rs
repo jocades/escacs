@@ -5,6 +5,7 @@ use anyhow::{bail, ensure, Context, Result};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, ChildStdout, Command},
+    select,
     sync::mpsc,
 };
 use tracing::{debug, error, trace};
@@ -67,13 +68,15 @@ impl Go {
 
 pub struct Engine {
     pub id: usize,
-    _child: Child,
+    child: Child,
     pub tx: mpsc::Sender<String>,
     pub rx: mpsc::Receiver<String>,
+    pub is_searching: bool,
+    stop_rx: mpsc::Receiver<()>,
 }
 
 impl Engine {
-    pub fn new(path: impl AsRef<Path>) -> Result<Self> {
+    pub fn new(path: impl AsRef<Path>, stop_rx: mpsc::Receiver<()>) -> Result<Self> {
         let mut child = Command::new(path.as_ref())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -98,9 +101,11 @@ impl Engine {
 
         Ok(Self {
             id: 0,
-            _child: child,
+            child,
             tx: input_tx,
             rx: output_rx,
+            is_searching: false,
+            stop_rx,
         })
     }
 
@@ -131,6 +136,10 @@ impl Engine {
         self.wait("readyok").await;
         debug!("READY");
         Ok(())
+    }
+
+    pub async fn kill(&mut self) -> Result<()> {
+        Ok(self.child.kill().await?)
     }
 
     pub async fn opts<O: std::fmt::Display>(&self, options: &[(O, O)]) -> Result<()> {
@@ -186,7 +195,32 @@ impl Engine {
         let cmd = self.prepare(job);
         self.tx.send(cmd).await?;
 
-        while let Some(line) = self.rx.recv().await {
+        self.is_searching = true;
+        loop {
+            select! {
+                line = self.rx.recv() => match line {
+                    Some(line) => match search(&line) {
+                        Some(Search::Info(info)) => {
+                            visitor.info(info);
+                        },
+                        Some(Search::BestMove(best)) => {
+                            visitor.best(best);
+                            break;
+                        }
+                        None => continue,
+                    }
+                    None => break,
+                },
+                _ = self.stop_rx.recv() => {
+                    println!("engine stop");
+                    self.stop().await?;
+                    break;
+                }
+            }
+        }
+        self.is_searching = false;
+
+        /* while let Some(line) = self.rx.recv().await {
             match search(&line) {
                 Some(Search::Info(i)) => visitor.info(i),
                 Some(Search::BestMove(b)) => {
@@ -195,7 +229,7 @@ impl Engine {
                 }
                 None => continue,
             };
-        }
+        } */
 
         Ok(())
     }
@@ -219,6 +253,7 @@ pub fn search(line: &str) -> Option<Search> {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Score {
     Cp(i32),
     Mate(i32),
@@ -247,7 +282,7 @@ pub struct Info {
     pub seldepth: u32,
     /// The number of principal variations (PVs) being considered. In this case, only the best move (single PV) is being reported.
     pub multipv: u32,
-    /// The evaluation score of the position in centipawns (1/100th of a pawn). Positive values favor White, and negative values favor Black.
+    /// The evaluation score of the position in centipawns (1/100th of a pawn).
     pub score: Score,
     pub wdl: (u64, u64, u64),
     /// The number of positions (nodes) the engine has evaluated so far.
