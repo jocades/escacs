@@ -50,6 +50,7 @@
     turn: toColor(chess),
     lastMove: undefined,
     orientation: "white",
+    moveNumber: chess.moveNumber(),
   });
 
   const tree = new Tree();
@@ -77,6 +78,7 @@
     s.fen = fen;
     s.lastMove = isStart ? undefined : [node.move.from, node.move.to];
     s.turn = toColor(chess);
+    s.moveNumber = chess.moveNumber();
 
     if (engineActive) {
       goCount++;
@@ -159,7 +161,7 @@
       <Button onclick={() => ipc.go(chess.fen())}>Go</Button>
     </div>
     <div class="flex flex-col gap-y-2">
-      <Analysis state={s} {info} />
+      <Analysis {chess} state={s} {info} />
       <TreeView {tree} {info} />
     </div>
   </div>

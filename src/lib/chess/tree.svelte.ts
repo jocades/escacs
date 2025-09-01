@@ -18,6 +18,7 @@ export interface State {
   turn: Color
   lastMove: [Key, Key] | undefined
   orientation: Color
+  moveNumber: number
 }
 
 export class Tree {
