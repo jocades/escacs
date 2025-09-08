@@ -65,5 +65,6 @@ export interface StockfishSettings {
    * Lower the Skill Level in order to make Stockfish play weaker (see also UCI_LimitStrength).
    * Internally, MultiPV is enabled, and with a certain probability depending on the Skill Level, a weaker move will be played.
    */
-  skillLevel: number
+  skillLevel?: number
+  depth?: number
 }

@@ -1,11 +1,9 @@
-use std::str::FromStr;
-use std::{fmt::Write, path::Path, process::Stdio};
+use std::{fmt::Write, path::Path, process::Stdio, str::FromStr};
 
 use anyhow::{bail, ensure, Context, Result};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, ChildStdout, Command},
-    select,
     sync::mpsc,
 };
 use tracing::{debug, error, trace};
@@ -29,54 +27,16 @@ async fn reader(stdout: ChildStdout, tx: mpsc::Sender<String>) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Default)]
-pub struct Go {
-    fen: Option<String>,
-    moves: Vec<String>,
-    depth: u32,
-}
-
-impl Go {
-    pub fn new() -> Self {
-        Self {
-            depth: 10,
-            ..Default::default()
-        }
-    }
-
-    pub fn fen(mut self, fen: impl Into<String>) -> Self {
-        self.fen = Some(fen.into());
-        self
-    }
-
-    pub fn moves(mut self, moves: &[impl AsRef<str>]) -> Self {
-        for mv in moves {
-            self.moves.push(mv.as_ref().into());
-        }
-        self
-    }
-
-    pub fn depth(mut self, depth: u32) -> Self {
-        self.depth = depth;
-        self
-    }
-
-    pub async fn execute(self, engine: &mut Engine) -> Result<(Info, BestMove)> {
-        engine.go(self).await
-    }
-}
-
 pub struct Engine {
     pub id: usize,
     child: Child,
     pub tx: mpsc::Sender<String>,
     pub rx: mpsc::Receiver<String>,
     pub is_searching: bool,
-    stop_rx: mpsc::Receiver<()>,
 }
 
 impl Engine {
-    pub fn new(path: impl AsRef<Path>, stop_rx: mpsc::Receiver<()>) -> Result<Self> {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self> {
         let mut child = Command::new(path.as_ref())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -105,7 +65,6 @@ impl Engine {
             tx: input_tx,
             rx: output_rx,
             is_searching: false,
-            stop_rx,
         })
     }
 
@@ -134,7 +93,7 @@ impl Engine {
     pub async fn stop(&mut self) -> Result<()> {
         self.tx.send("stop\nisready".into()).await?;
         self.wait("readyok").await;
-        debug!("READY");
+        println!("engine stop");
         Ok(())
     }
 
@@ -175,7 +134,7 @@ impl Engine {
         let mut best: Option<BestMove> = None;
 
         while let Some(line) = self.rx.recv().await {
-            match search(&line) {
+            match search(&line)? {
                 Some(Search::Info(i)) => info = Some(i),
                 Some(Search::BestMove(b)) => {
                     best = Some(b);
@@ -192,36 +151,13 @@ impl Engine {
     }
 
     pub async fn go_with<V: Visitor>(&mut self, job: Go, visitor: &mut V) -> Result<()> {
+        println!("go_with");
         let cmd = self.prepare(job);
         self.tx.send(cmd).await?;
 
         self.is_searching = true;
-        loop {
-            select! {
-                line = self.rx.recv() => match line {
-                    Some(line) => match search(&line) {
-                        Some(Search::Info(info)) => {
-                            visitor.info(info);
-                        },
-                        Some(Search::BestMove(best)) => {
-                            visitor.best(best);
-                            break;
-                        }
-                        None => continue,
-                    }
-                    None => break,
-                },
-                _ = self.stop_rx.recv() => {
-                    println!("engine stop");
-                    self.stop().await?;
-                    break;
-                }
-            }
-        }
-        self.is_searching = false;
-
-        /* while let Some(line) = self.rx.recv().await {
-            match search(&line) {
+        while let Some(line) = self.rx.recv().await {
+            match search(&line)? {
                 Some(Search::Info(i)) => visitor.info(i),
                 Some(Search::BestMove(b)) => {
                     visitor.best(b);
@@ -229,9 +165,51 @@ impl Engine {
                 }
                 None => continue,
             };
-        } */
+        }
+        self.is_searching = false;
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Go {
+    fen: Option<String>,
+    moves: Vec<String>,
+    depth: u32,
+}
+
+impl Go {
+    pub fn new() -> Self {
+        Self {
+            depth: 10,
+            ..Default::default()
+        }
+    }
+
+    pub fn fen(mut self, fen: impl Into<String>) -> Self {
+        self.fen = Some(fen.into());
+        self
+    }
+
+    pub fn moves(mut self, moves: &[impl AsRef<str>]) -> Self {
+        for mv in moves {
+            self.moves.push(mv.as_ref().into());
+        }
+        self
+    }
+
+    pub fn depth(mut self, depth: u32) -> Self {
+        self.depth = depth;
+        self
+    }
+
+    pub async fn execute(self, engine: &mut Engine) -> Result<(Info, BestMove)> {
+        engine.go(self).await
+    }
+
+    pub async fn execute_with(self, engine: &mut Engine, visitor: &mut impl Visitor) -> Result<()> {
+        engine.go_with(self, visitor).await
     }
 }
 
@@ -240,16 +218,16 @@ pub trait Visitor {
     fn best(&mut self, best: BestMove);
 }
 
-pub fn search(line: &str) -> Option<Search> {
+fn search(line: &str) -> Result<Option<Search>> {
     if line.starts_with("info depth") {
-        let info = line.parse::<Info>().unwrap();
-        return Some(Search::Info(info));
+        let info = line.parse::<Info>()?;
+        return Ok(Some(Search::Info(info)));
     }
     if line.starts_with("bestmove") {
         let best = line.parse::<BestMove>().unwrap();
-        return Some(Search::BestMove(best));
+        return Ok(Some(Search::BestMove(best)));
     }
-    None
+    Ok(None)
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, serde::Serialize)]
@@ -267,10 +245,7 @@ impl Default for Score {
 
 impl Score {
     pub fn is_checkmate(&self) -> bool {
-        match self {
-            Self::Mate(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Mate(_))
     }
 }
 
@@ -282,7 +257,7 @@ pub struct Info {
     pub seldepth: u32,
     /// The number of principal variations (PVs) being considered. In this case, only the best move (single PV) is being reported.
     pub multipv: u32,
-    /// The evaluation score of the position in centipawns (1/100th of a pawn).
+    /// The evaluation score of the position in centipawns (1/100th of a pawn). Shown from the side to move.
     pub score: Score,
     pub wdl: (u64, u64, u64),
     /// The number of positions (nodes) the engine has evaluated so far.
@@ -347,14 +322,6 @@ fn parse_info(line: &str) -> Result<Info> {
     Ok(info)
 }
 
-impl FromStr for Info {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        parse_info(s)
-    }
-}
-
 fn parse_bestmove(line: &str) -> Result<BestMove> {
     let parts = line.split_whitespace().collect::<Vec<_>>();
     Ok(BestMove {
@@ -363,9 +330,15 @@ fn parse_bestmove(line: &str) -> Result<BestMove> {
     })
 }
 
+impl FromStr for Info {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        parse_info(s)
+    }
+}
+
 impl FromStr for BestMove {
     type Err = anyhow::Error;
-
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         parse_bestmove(s)
     }

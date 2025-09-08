@@ -395,46 +395,121 @@ impl GameAnalysis {
     }
 }
 
+use pgn_reader::{Reader, SanPlus};
+use shakmaty::{fen::Fen, Chess, Color, Position};
+use std::ops::ControlFlow;
+
+#[derive(Debug)]
+struct Move {
+    san: String,
+    uci: String,
+    color: Color,
+    from: String,
+    to: String,
+    before: String,
+    after: String,
+}
+
+#[derive(Default)]
+struct Extractor {
+    moves: Vec<Move>,
+}
+
+impl pgn_reader::Visitor for Extractor {
+    type Tags = Option<Chess>;
+    type Movetext = Chess;
+    type Output = anyhow::Result<Chess>;
+
+    fn begin_tags(&mut self) -> ControlFlow<Self::Output, Self::Tags> {
+        ControlFlow::Continue(None)
+    }
+
+    fn begin_movetext(&mut self, tags: Self::Tags) -> ControlFlow<Self::Output, Self::Movetext> {
+        ControlFlow::Continue(tags.unwrap_or_default())
+    }
+
+    fn san(
+        &mut self,
+        movetext: &mut Self::Movetext,
+        san_plus: SanPlus,
+    ) -> ControlFlow<Self::Output> {
+        let before = Fen::from_position(movetext, shakmaty::EnPassantMode::Legal).to_string();
+        let color = movetext.turn();
+        match san_plus.san.to_move(movetext) {
+            Ok(m) => {
+                let uci = m.to_uci(shakmaty::CastlingMode::Standard).to_string();
+                movetext.play_unchecked(m);
+                self.moves.push(Move {
+                    san: san_plus.to_string(),
+                    uci,
+                    color,
+                    from: m.from().unwrap().to_string(),
+                    to: m.to().to_string(),
+                    before,
+                    after: Fen::from_position(movetext, shakmaty::EnPassantMode::Legal).to_string(),
+                });
+                ControlFlow::Continue(())
+            }
+            Err(e) => ControlFlow::Break(Err(e.into())),
+        }
+    }
+
+    fn end_game(&mut self, movetext: Self::Movetext) -> Self::Output {
+        Ok(movetext)
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let pgn = r#"[Event "Weekly SuperBlitz Arena"]
+[Site "https://lichess.org/vX1JWvhr"]
+[Date "2025.09.02"]
+[White "admin112"]
+[Black "Ehrenstein"]
+[Result "1-0"]
+[GameId "vX1JWvhr"]
+[UTCDate "2025.09.02"]
+[UTCTime "18:02:28"]
+[WhiteElo "2072"]
+[BlackElo "2243"]
+[WhiteRatingDiff "+9"]
+[BlackRatingDiff "-9"]
+[Variant "Standard"]
+[TimeControl "180+0"]
+[ECO "E10"]
+[Opening "Indian Defense: Anti-Nimzo-Indian"]
+[Termination "Normal"]
+[Annotator "lichess.org"]
+
+1. d4 Nf6 2. c4 e6 3. Nf3 { E10 Indian Defense: Anti-Nimzo-Indian } d5 4. g3 c6 5. Qc2 Be7 6. Bg2 O-O 7. O-O b6 8. Nbd2 Ba6 9. b3 c5 10. cxd5 exd5 11. dxc5 Bxe2 12. Re1 Bxf3 13. Nxf3 Bxc5 14. a3 Nc6 15. b4 Nd4 16. Qd3 Nxf3+ 17. Bxf3 Be7 18. Bb2 Ne4 19. Bxe4 dxe4 20. Qxe4 Bf6 21. Rad1 Qe8 22. Bxf6 Qxe4 23. Rxe4 gxf6 24. Rd7 Rfd8 25. Ree7 Rxd7 26. Rxd7 a5 27. Rb7 axb4 28. axb4 b5 29. Rxb5 Ra1+ 30. Kg2 Rb1 31. Rb8+ Kg7 32. b5 f5 33. b6 Kf6 34. b7 Rb2 35. h4 h5 36. Rh8 Rxb7 37. Rxh5 Kg6 38. Rg5+ Kf6 39. Kh3 Rb3 40. Rg8 Rc3 41. Ra8 Rc4 42. Ra6+ Kg7 43. h5 f6 44. f3 Rb4 45. Ra5 f4 46. g4 Rb6 47. Rf5 Rb4 48. Kh4 Rc4 49. g5 fxg5+ 50. Kxg5 Rc3 51. Rxf4 Rc5+ 52. Rf5 Rc3 53. f4 Rc4 54. Rd5 Rc2 55. Rd7+ Kh8 56. f5 Rg2+ 57. Kh6 Rg8 58. Rh7# { White wins by checkmate. } 1-0"#;
+
+    let mut reader = Reader::new(std::io::Cursor::new(&pgn));
+    let mut extractor = Extractor::default();
+    reader.read_game(&mut extractor)?;
+
     let mut engine = Engine::new("stockfish")?;
-    let opts = [("Threads", "8"), ("UCI_ShowWDL", "true"), ("MultiPV", "2")];
+    let opts = [("Threads", "8"), ("UCI_ShowWDL", "true"), ("MultiPV", "1")];
 
     engine.uci().await?;
     engine.opts(&opts).await?;
     engine.isready().await?;
 
-    let mut analyzer = GameAnalyzer::new(&mut engine, 15);
+    let mut analyzer = GameAnalyzer::new(&mut engine, 20);
 
     // Example game moves (in UCI format or you can convert from SAN)
-    let game_moves = vec![
-        "e2e4".to_string(),
-        "e7e5".to_string(),
-        "g1f3".to_string(),
-        "b8c6".to_string(),
-        "f1b5".to_string(), // Ruy Lopez opening
-        "a7a6".to_string(),
-        "b5a4".to_string(),
-        "g8f6".to_string(),
-        "e1g1".to_string(),
-        "f8e7".to_string(),
-        "f1e1".to_string(),
-        "b7b5".to_string(),
-        "a4b3".to_string(),
-        "d7d6".to_string(),
-        "c2c3".to_string(),
-        "e8g8".to_string(),
-        "h2h3".to_string(),
-        "c6a5".to_string(), // Questionable move - should be classified as inaccuracy/mistake
-        "b3c2".to_string(),
-        "c7c5".to_string(),
-        // ... more moves
-    ];
 
     println!("Starting game analysis...");
 
+    let moves = extractor
+        .moves
+        .iter()
+        .map(|m| m.uci.clone())
+        .collect::<Vec<_>>();
+
+    println!("{moves:?}");
+
     // Analyze the game
-    let analysis = analyzer.analyze_game(&game_moves, None).await?;
+    let analysis = analyzer.analyze_game(&moves, None).await?;
 
     // Generate and print the report
     let report = analysis.generate_report();

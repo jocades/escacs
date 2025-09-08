@@ -11,7 +11,7 @@
   import ipc from "$lib/ipc";
   import { Button } from "$lib/components/ui/button";
   import { longPgn, shortPgn } from "$lib/chess/test-pgns";
-  import type { Info, Score } from "$lib/chess/types";
+  import type { Info, Score, StockfishSettings } from "$lib/chess/types";
   import { toColor } from "$lib/chess/util";
 
   const chess = new Chess();
@@ -58,6 +58,11 @@
   $inspect(tree.cursor, tree.nodes);
 
   let engineActive = $state(false);
+  let searchDone = $state(false);
+
+  async function search() {
+    await ipc.go(chess.fen());
+  }
 
   let goCount = 0;
 
@@ -81,11 +86,8 @@
     s.moveNumber = chess.moveNumber();
 
     if (engineActive) {
-      goCount++;
-      console.log(goCount);
-      // invoke("call_count");
-      ipc.go(fen);
-      // invoke("go", { fen: chess.fen() });
+      searchDone = false;
+      // ipc.go(fen);
     }
   });
 
@@ -113,42 +115,47 @@
     }
   }
 
+  const stockfishSettings: StockfishSettings = $state({
+    multiPV: 3,
+    depth: 26,
+  });
+
   const chan = new Channel<Info>();
-
-  let info: Info | undefined = $state();
-
-  function unaryScore(n: number) {
-    return chess.turn() === "w" ? n : -n;
-  }
-
-  function normalizeScore(score: Score) {
-    if (score.cp) score.cp = unaryScore(score.cp);
-    else score.mate = unaryScore(score.mate);
-  }
+  const infos: Info[] = $state([]);
 
   chan.onmessage = (data) => {
     console.log("onMessage", data);
-    // normalizeScore(data.score);
-    info = data;
+    infos[data.multipv - 1] = data;
+    if (
+      data.multipv === stockfishSettings.multiPV &&
+      data.depth === stockfishSettings.depth
+    ) {
+      searchDone = true;
+    }
   };
 
   const score = $derived.by(() => {
-    if (!info || !info.score?.cp) return 0;
-    return chess.turn() === "w" ? info.score?.cp : -info.score?.cp;
+    const mainInfo = infos[0];
+    if (!mainInfo || !mainInfo.score?.cp) return 0;
+    return chess.turn() === "w" ? mainInfo.score?.cp : -mainInfo.score?.cp;
   });
 
   onMount(() => {
-    // tree.loadPgn(chess, shortPgn);
-    document.addEventListener("keydown", onKeyDown);
-
     ipc.startEngine(chan).then(() => {
       engineActive = true;
     });
+    // tree.loadPgn(chess, shortPgn);
 
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
     };
   });
+
+  function onInfoClick(pv: number, index: number) {
+    for (const m of infos[pv - 1].pv) {
+    }
+  }
 </script>
 
 <main class="flex h-full justify-center">
@@ -161,8 +168,8 @@
       <Button onclick={() => ipc.go(chess.fen())}>Go</Button>
     </div>
     <div class="flex flex-col gap-y-2">
-      <Analysis {chess} state={s} {info} />
-      <TreeView {tree} {info} />
+      <Analysis state={s} {infos} {onInfoClick} />
+      <TreeView {tree} />
     </div>
   </div>
 </main>

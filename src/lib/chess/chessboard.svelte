@@ -1,7 +1,7 @@
 <script lang="ts">
   import "./styles/base.css";
-  import "./styles/brown.css";
-  import "./styles/pieces.css";
+  import "./styles/boards/blue.css";
+  import "./styles/pieces/chessbase.css";
 
   import type { Chess } from "chess.js";
   import { Chessground } from "chessground";
@@ -30,6 +30,16 @@
       },
       highlight: { check: true },
       draggable: { showGhost: false },
+      drawable: {
+        brushes: {
+          black: {
+            key: "black-arrow",
+            color: "#282828",
+            opacity: 1,
+            lineWidth: 5,
+          },
+        },
+      },
     });
   });
 
@@ -41,7 +51,26 @@
       check: chess.isCheck(),
       lastMove: state.lastMove,
       orientation: state.orientation,
+      // drawable: {
+      //   shapes: [
+      //     {
+      //       orig: state?.lastMove[0],
+      //       dest: state?.lastMove[1],
+      //       brush: "black",
+      //     },
+      //   ],
+      // },
     });
+
+    // console.log(cg.state.drawable.shapes);
+
+    // cg.setShapes([
+    //   {
+    //     orig: "d2",
+    //     dest: "d4",
+    //     brush: "green",
+    //   },
+    // ]);
   });
 </script>
 

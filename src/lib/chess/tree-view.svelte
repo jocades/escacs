@@ -9,7 +9,7 @@
   } from "@lucide/svelte";
   import { cn } from "$lib/utils";
 
-  const { tree }: { tree: Tree; info: any } = $props();
+  const { tree }: { tree: Tree } = $props();
 
   const pairs = $derived.by(() => {
     const result = [];

@@ -1,35 +1,41 @@
 <script lang="ts">
   import * as Tabs from "$lib/components/ui/tabs";
   import { SearchIcon, SettingsIcon } from "@lucide/svelte";
-  import type { Info } from "./types";
+  import type { Info, Score } from "./types";
   import { type State } from "./tree.svelte";
   import { cn } from "$lib/utils";
   import { Separator } from "$lib/components/ui/separator";
-  import type { Chess } from "chess.js";
 
   const {
     state: s,
-    chess,
-    info,
-  }: { state: State; chess: Chess; info?: Info } = $props();
+    infos,
+    onInfoClick,
+  }: {
+    state: State;
+    infos: Info[];
+    onInfoClick: (pv: number, index: number) => void;
+  } = $props();
 
-  const score = $derived.by(
-    () =>
-      ((s.turn === "white" ? info?.score?.cp : (info?.score?.cp ?? 0) * -1) ??
-        0) / 100,
-  );
+  const mainInfo = $derived(infos[0]);
+  $inspect(mainInfo);
+
+  function normScore(score: Score) {
+    if (score?.cp === undefined) return 0;
+    const cp = score.cp;
+    return ((s.turn === "white" ? cp : cp * -1) / 100).toFixed(2);
+  }
 
   let engineSettingsActive = $state(false);
 </script>
 
-{#snippet evaluation(top: boolean)}
+{#snippet evaluation(score: Score, top: boolean)}
   <h2
     class={cn(
-      "font-bold tracking-tight text-zinc-200/80 select-none",
+      "font-bold tracking-tight text-zinc-200/80",
       top ? "text-xl" : "text-sm",
     )}
   >
-    {#if score !== undefined && score > 0}+{/if}{score.toFixed(2)}
+    {#if score?.cp !== undefined && score.cp > 0}+{/if}{normScore(score)}
   </h2>
 {/snippet}
 
@@ -42,7 +48,7 @@
       </Tabs.Trigger>
       <Tabs.Trigger value="other">Other</Tabs.Trigger>
     </Tabs.List>
-    <Tabs.Content value="analysis" class="px-2">
+    <Tabs.Content value="analysis" class="px-2 select-none">
       <div class="flex items-center justify-between">
         <h2 class="font-bold">Stockfish 16</h2>
         <SettingsIcon
@@ -53,21 +59,35 @@
           )}
         />
       </div>
-      {@render evaluation(true)}
+      <div class="flex items-center justify-between">
+        {@render evaluation(mainInfo?.score, true)}
+        <span class="text-sm text-muted-foreground">
+          depth={mainInfo?.depth ?? 0}
+        </span>
+      </div>
       <Separator class="my-2" />
       {#if engineSettingsActive}
         <div class="flex">FORM</div>
       {:else}
-        <div class="flex gap-2">
-          {#if info !== undefined}
-            {@render evaluation(false)}
-            <p class="text-sm truncate">
-              <span class="font-bold text-muted-foreground">
+        <div class="flex flex-col gap-2">
+          {#each infos as info}
+            <div class="flex items-center">
+              {@render evaluation(info.score, false)}
+              <span class="font-bold text-muted-foreground px-2">
                 {s.moveNumber}{#if s.turn === "white"}.{:else}...{/if}
               </span>
-              {info.pv.join(" ")}
-            </p>
-          {/if}
+              <p class="truncate text-sm space-x-0.5">
+                {#each info.pv as san, index}
+                  <button
+                    onclick={() => onInfoClick(info.multipv, index)}
+                    class="cursor-pointer hover:bg-zinc-200/20 rounded px-0.5"
+                  >
+                    {san}
+                  </button>
+                {/each}
+              </p>
+            </div>
+          {/each}
         </div>
       {/if}
     </Tabs.Content>
