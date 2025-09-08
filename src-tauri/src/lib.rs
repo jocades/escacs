@@ -8,6 +8,7 @@ use tokio::{
     select,
     sync::{mpsc, oneshot, Notify},
 };
+use tracing::{debug, Instrument};
 
 use crate::chess::{
     openings::{find_opening, gather_openings},
@@ -102,6 +103,7 @@ async fn controller(
 
 impl EngineManager {
     async fn run(&mut self) -> anyhow::Result<()> {
+        let _span = tracing::debug_span!("controller");
         while let Some(op) = self.rx.recv().await {
             match op {
                 Op::Start(chan, ack) => {
@@ -127,25 +129,28 @@ impl EngineManager {
 
                     let visitor = Visitor { chan };
 
-                    tauri::async_runtime::spawn(async move {
-                        if let Err(e) =
-                            controller(engine, visitor, job_rx, notify, is_searching).await
-                        {
-                            eprintln!("handler error: {e}");
+                    tauri::async_runtime::spawn(
+                        async move {
+                            if let Err(e) =
+                                controller(engine, visitor, job_rx, notify, is_searching).await
+                            {
+                                tracing::error!(cause = %e, "handler error");
+                            }
                         }
-                    });
+                        .instrument(tracing::trace_span!("controller")),
+                    );
 
                     _ = ack.send(self.engines.len() - 1);
                 }
                 Op::Go(job) => {
-                    println!("[manager] job = {job:?}");
+                    debug!(?job);
                     let EngineEntry {
                         job_tx,
                         notify,
                         is_searching,
                     } = &mut self.engines[0];
                     if is_searching.load(Ordering::SeqCst) {
-                        println!("[manager] is_searching = true");
+                        debug!(?is_searching);
                         notify.notify_one();
                     }
                     job_tx.send(job).await?;
@@ -272,11 +277,20 @@ pub fn run() {
 
 fn setup_logging() {
     use tracing::level_filters::LevelFilter;
+    use tracing_subscriber::filter::EnvFilter;
+
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::TRACE.into())
+        .from_env_lossy()
+        .add_directive(
+            "tao::platform_impl::platform::window_delegate=info"
+                .parse()
+                .unwrap(),
+        );
 
     tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::TRACE)
+        .with_env_filter(filter)
         .without_time()
-        .with_target(false)
         .compact()
         .init();
 }

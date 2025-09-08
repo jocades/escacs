@@ -1,5 +1,7 @@
 #![allow(static_mut_refs)]
 
+use std::time::Instant;
+
 use shakmaty::{fen::Fen, san::San, Chess, EnPassantMode, Position};
 
 const TSVS: [&str; 5] = [
@@ -41,11 +43,17 @@ impl Opening {
 }
 
 pub fn gather_openings() {
+    let start = Instant::now();
     for tsv in TSVS {
         for line in tsv.lines().skip(1) {
             unsafe { OPENINGS.push(Opening::from_tsv(line)) };
         }
     }
+    tracing::trace!(
+        "gathered {} openings in {:?}",
+        unsafe { OPENINGS.len() },
+        start.elapsed()
+    );
 }
 
 #[tauri::command]
