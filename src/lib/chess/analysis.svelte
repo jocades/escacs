@@ -17,7 +17,7 @@
   } = $props();
 
   const mainInfo = $derived(infos[0]);
-  $inspect(mainInfo);
+  // $inspect(mainInfo);
 
   function normScore(score: Score) {
     if (score?.cp === undefined) return 0;
@@ -50,7 +50,7 @@
     </Tabs.List>
     <Tabs.Content value="analysis" class="px-2 select-none">
       <div class="flex items-center justify-between">
-        <h2 class="font-bold">Stockfish 16</h2>
+        <h2 class="font-bold">Stockfish 17</h2>
         <SettingsIcon
           onclick={() => (engineSettingsActive = !engineSettingsActive)}
           class={cn(

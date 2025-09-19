@@ -14,6 +14,14 @@ export interface Info {
   pv: string[]
 }
 
+export interface Opening {
+  eco: string
+  name: string
+  pgn: string
+  move_count: number
+  fen: string
+}
+
 export interface StockfishSettings {
   /**
    * `type spin default 1 min 1 max 1024`

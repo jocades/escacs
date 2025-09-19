@@ -19,6 +19,7 @@ pub struct Opening {
     eco: &'static str,
     name: &'static str,
     pgn: &'static str,
+    move_count: usize,
     fen: String,
 }
 
@@ -29,14 +30,19 @@ impl Opening {
         let eco = parts.next().unwrap();
         let name = parts.next().unwrap();
         let pgn = parts.next().unwrap();
+        let mut move_count = 0;
         pgn.split_whitespace()
             .filter_map(|m| m.parse::<San>().ok())
-            .for_each(|san| chess.play_unchecked(san.to_move(&chess).unwrap()));
+            .for_each(|san| {
+                chess.play_unchecked(san.to_move(&chess).unwrap());
+                move_count += 1;
+            });
         let fen = Fen::from_position(&chess, EnPassantMode::Legal).to_string();
         Self {
             eco,
             name,
             pgn,
+            move_count,
             fen,
         }
     }
@@ -44,13 +50,16 @@ impl Opening {
 
 pub fn gather_openings() {
     let start = Instant::now();
+    let mut max = 0;
     for tsv in TSVS {
         for line in tsv.lines().skip(1) {
-            unsafe { OPENINGS.push(Opening::from_tsv(line)) };
+            let opening = Opening::from_tsv(line);
+            max = opening.move_count.max(max);
+            unsafe { OPENINGS.push(opening) };
         }
     }
     tracing::trace!(
-        "gathered {} openings in {:?}",
+        "gathered {} openings in {:?}; max = {max}",
         unsafe { OPENINGS.len() },
         start.elapsed()
     );

@@ -1,5 +1,5 @@
 import { type Channel, invoke } from "@tauri-apps/api/core"
-import type { Info } from "./chess/types"
+import type { Info, Opening } from "./chess/types"
 
 async function startEngine(chan: Channel<Info>) {
   await invoke("start_engine", { chan })
@@ -9,4 +9,8 @@ async function go(fen: string) {
   await invoke("go", { fen })
 }
 
-export default { startEngine, go }
+async function findOpening(fen: string): Promise<Opening | undefined> {
+  return await invoke("find_opening", { fen })
+}
+
+export default { startEngine, go, findOpening }

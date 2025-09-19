@@ -6,13 +6,13 @@ use std::sync::{
 use tauri::{Builder, Manager, State};
 use tokio::{
     select,
-    sync::{mpsc, oneshot, Notify},
+    sync::{mpsc, oneshot},
 };
-use tracing::{debug, Instrument};
+use tracing::{debug, error, Instrument};
 
 use crate::chess::{
     openings::{find_opening, gather_openings},
-    BestMove, Engine, Go, Info,
+    search, Engine, Go, Info, Search,
 };
 
 pub mod chess;
@@ -22,28 +22,16 @@ struct AppState {
     client_restart_count: AtomicUsize,
 }
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-// #[tauri::command]
-// fn greet(name: &str) -> String {
-//     println!("GREET CMD");
-//     format!("Hello, {}! You've been greeted from Rust!", name)
-// }
-
-struct Handler {
-    engines: Vec<Engine>,
-}
-
 static mut CALL_COUNT: usize = 0;
 
 enum Op {
     Start(tauri::ipc::Channel<Info>, oneshot::Sender<usize>),
     Go(Go),
-    Stop,
 }
 
 struct EngineEntry {
     job_tx: mpsc::Sender<Go>,
-    notify: Arc<Notify>,
+    stop_tx: mpsc::Sender<oneshot::Sender<()>>,
     is_searching: Arc<AtomicBool>,
 }
 
@@ -52,89 +40,69 @@ pub struct EngineManager {
     rx: mpsc::Receiver<Op>,
 }
 
-pub struct Visitor {
-    chan: tauri::ipc::Channel<Info>,
-}
-
-impl chess::Visitor for Visitor {
-    fn info(&mut self, info: Info) {
-        println!("INFO: depth = {}", info.depth);
-        self.chan.send(info).unwrap();
-    }
-
-    fn best(&mut self, best: BestMove) {}
-}
-
-enum Command {
-    Go(Go),
-}
-
 async fn controller(
     mut engine: Engine,
-    mut visitor: Visitor,
     mut job_rx: mpsc::Receiver<Go>,
-    stop: Arc<Notify>,
+    mut stop_rx: mpsc::Receiver<oneshot::Sender<()>>,
+    chan: tauri::ipc::Channel<Info>,
     is_searching: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
-    loop {
-        select! {
-            Some(job) = job_rx.recv() => {
-                println!("[controller] is_searching = true");
-                is_searching.store(true, Ordering::SeqCst);
-                let fut = engine.go_with(job, &mut visitor);
-                select! {
-                    res = fut => res?,
-                    () = stop.notified() => {
-                        println!("notified");
-                        engine.stop().await?;
-                    }
+    while let Some(job) = job_rx.recv().await {
+        let cmd = engine.prepare(job);
+        engine.tx.send(cmd).await?;
+        is_searching.store(true, Ordering::SeqCst);
+        loop {
+            select! {
+                Some(line) = engine.rx.recv() => match search(&line)? {
+                    Some(Search::Info(i)) => chan.send(i)?,
+                    Some(Search::BestMove(_)) => {},
+                    None => continue,
+                },
+                Some(ack) = stop_rx.recv() => {
+                    engine.stop().await?;
+                    _ = ack.send(());
+                    break;
                 }
+                else => break,
             }
-            else => {
-                println!("[controller] break");
-                break;
-            },
         }
         is_searching.store(false, Ordering::SeqCst);
-        println!("[controller] is_searching = false");
     }
     Ok(())
 }
 
 impl EngineManager {
     async fn run(&mut self) -> anyhow::Result<()> {
-        let _span = tracing::debug_span!("controller");
+        let _span = tracing::debug_span!("manager");
         while let Some(op) = self.rx.recv().await {
             match op {
                 Op::Start(chan, ack) => {
                     if self.engines.len() > 0 {
                         continue;
                     }
-                    let mut engine = Engine::new("stockfish").unwrap();
+                    let mut engine = Engine::new("stockfish")?;
                     let opts = [("Threads", "8"), ("UCI_ShowWDL", "true"), ("MultiPV", "3")];
                     engine.uci().await?;
                     engine.opts(&opts).await?;
                     engine.isready().await?;
 
                     let (job_tx, job_rx) = mpsc::channel(32);
-                    let notify = Arc::new(Notify::new());
+                    let (stop_tx, stop_rx) = mpsc::channel(1);
                     let is_searching = Arc::new(AtomicBool::new(false));
 
                     let entry = EngineEntry {
                         job_tx,
-                        notify: notify.clone(),
+                        stop_tx,
                         is_searching: is_searching.clone(),
                     };
                     self.engines.push(entry);
 
-                    let visitor = Visitor { chan };
-
                     tauri::async_runtime::spawn(
                         async move {
                             if let Err(e) =
-                                controller(engine, visitor, job_rx, notify, is_searching).await
+                                controller(engine, job_rx, stop_rx, chan, is_searching).await
                             {
-                                tracing::error!(cause = %e, "handler error");
+                                tracing::error!(cause = %e, "controller error");
                             }
                         }
                         .instrument(tracing::trace_span!("controller")),
@@ -143,21 +111,21 @@ impl EngineManager {
                     _ = ack.send(self.engines.len() - 1);
                 }
                 Op::Go(job) => {
-                    debug!(?job);
                     let EngineEntry {
                         job_tx,
-                        notify,
+                        stop_tx,
                         is_searching,
                     } = &mut self.engines[0];
+
+                    debug!(?is_searching, ?job);
+
                     if is_searching.load(Ordering::SeqCst) {
-                        debug!(?is_searching);
-                        notify.notify_one();
+                        let (ack, syn) = oneshot::channel();
+                        stop_tx.send(ack).await?;
+                        syn.await?;
                     }
+
                     job_tx.send(job).await?;
-                }
-                Op::Stop => {
-                    // let (_, stop_tx) = &mut self.engines[0];
-                    // stop_tx.send(()).await?;
                 }
             }
         }
@@ -178,7 +146,7 @@ impl Handle {
         };
         tauri::async_runtime::spawn(async move {
             if let Err(e) = manager.run().await {
-                eprintln!("manager error: {e}");
+                error!(cause = %e, "manager error");
             }
         });
         Self { tx }
@@ -196,10 +164,6 @@ impl Handle {
     pub async fn go(&self, job: Go) {
         self.tx.send(Op::Go(job)).await.expect("manager died");
     }
-
-    pub async fn stop_engine(&self) {
-        self.tx.send(Op::Stop).await.expect("manager died");
-    }
 }
 
 #[tauri::command]
@@ -211,7 +175,7 @@ async fn start_engine(
         .client_restart_count
         .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     if n == 0 {
-        println!("start engine");
+        debug!("start engine");
         state.handle.start_engine(chan).await;
     }
     Ok(())
@@ -221,17 +185,11 @@ async fn start_engine(
 async fn go(fen: &str, state: State<'_, AppState>) -> Result<(), String> {
     unsafe {
         CALL_COUNT += 1;
-        println!("call_count = {CALL_COUNT}");
+        debug!("call_count = {CALL_COUNT}");
     };
-    println!("go fen: {fen}");
+    debug!(fen, "GO");
     let job = Go::new().fen(fen).depth(26);
     state.handle.go(job).await;
-    Ok(())
-}
-
-#[tauri::command]
-async fn stop_engine(state: State<'_, AppState>) -> Result<(), String> {
-    state.handle.stop_engine().await;
     Ok(())
 }
 
@@ -242,11 +200,8 @@ fn test_what() -> &'static str {
 }
 
 #[tauri::command]
-fn call_count() {
-    unsafe {
-        CALL_COUNT += 1;
-        println!("call_count = {CALL_COUNT}");
-    };
+fn test_obj(value: serde_json::Map<String, serde_json::Value>) {
+    debug!(?value);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -256,10 +211,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_engine,
             go,
-            stop_engine,
             test_what,
-            call_count,
             find_opening,
+            test_obj,
         ])
         .setup(|app| {
             setup_logging();
@@ -282,6 +236,7 @@ fn setup_logging() {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::TRACE.into())
         .from_env_lossy()
+        .add_directive("escacs_lib::chess::engine=debug".parse().unwrap())
         .add_directive(
             "tao::platform_impl::platform::window_delegate=info"
                 .parse()
@@ -291,6 +246,7 @@ fn setup_logging() {
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .without_time()
-        .compact()
+        // .with_target(false)
+        // .compact()
         .init();
 }

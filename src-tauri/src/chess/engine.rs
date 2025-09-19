@@ -86,14 +86,12 @@ impl Engine {
     pub async fn isready(&mut self) -> Result<()> {
         self.tx.send("isready".into()).await?;
         self.wait("readyok").await;
-        debug!("READY");
         Ok(())
     }
 
     pub async fn stop(&mut self) -> Result<()> {
         self.tx.send("stop\nisready".into()).await?;
         self.wait("readyok").await;
-        println!("engine stop");
         Ok(())
     }
 
@@ -170,6 +168,20 @@ impl Engine {
 
         Ok(())
     }
+
+    pub async fn search(&mut self, job: Go, tx: mpsc::Sender<Search>) -> Result<()> {
+        let cmd = self.prepare(job);
+        self.tx.send(cmd).await?;
+
+        while let Some(line) = self.rx.recv().await {
+            match search(&line)? {
+                Some(x) => tx.send(x).await?,
+                None => continue,
+            };
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -218,13 +230,13 @@ pub trait Visitor {
     fn best(&mut self, best: BestMove);
 }
 
-fn search(line: &str) -> Result<Option<Search>> {
+pub fn search(line: &str) -> Result<Option<Search>> {
     if line.starts_with("info depth") {
         let info = line.parse::<Info>()?;
         return Ok(Some(Search::Info(info)));
     }
     if line.starts_with("bestmove") {
-        let best = line.parse::<BestMove>().unwrap();
+        let best = line.parse::<BestMove>()?;
         return Ok(Some(Search::BestMove(best)));
     }
     Ok(None)

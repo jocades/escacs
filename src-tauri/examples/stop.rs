@@ -1,16 +1,16 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
-use escacs_lib::chess::{self, BestMove, Engine, Go, Info};
+use escacs_lib::chess::{self, search, BestMove, Engine, Go, Info, Search, Visitor};
 use tokio::sync::{mpsc, oneshot, Notify};
 use tracing::info;
 
 #[derive(Default)]
-struct Visitor {
+struct GameVisitor {
     info_count: usize,
 }
 
-impl chess::Visitor for Visitor {
+impl chess::Visitor for GameVisitor {
     fn info(&mut self, _: Info) {
         self.info_count += 1;
         info!("info_count = {}", self.info_count);
@@ -30,7 +30,7 @@ async fn controller(
     mut rx: mpsc::Receiver<Op>,
     mut stop_rx: mpsc::Receiver<oneshot::Sender<()>>,
 ) -> anyhow::Result<()> {
-    let mut visitor = Visitor::default();
+    let mut visitor = GameVisitor::default();
     engine.uci().await?;
     engine.isready().await?;
 
@@ -38,16 +38,35 @@ async fn controller(
         match op {
             Op::Go(job) => {
                 info!("new job");
-                let fut = engine.go_with(job, &mut visitor);
-                tokio::select! {
-                    res = fut => res?,
-                    Some(ack) = stop_rx.recv() => {
-                        info!("[controller] stop");
-                        engine.stop().await?;
-                        info!("send ack");
-                        _ = ack.send(());
+                let cmd = engine.prepare(job);
+                engine.tx.send(cmd).await?;
+                loop {
+                    tokio::select! {
+                        Some(line) = engine.rx.recv() => match search(&line)? {
+                            Some(Search::Info(i)) => visitor.info(i),
+                            Some(Search::BestMove(b)) => visitor.best(b),
+                            None => continue,
+                        },
+                        Some(ack) = stop_rx.recv() => {
+                            info!("[controller] stop");
+                            engine.stop().await?;
+                            info!("send ack");
+                            _ = ack.send(());
+                            break;
+                        }
+                        else => break,
                     }
                 }
+                // let fut = engine.go_with(job, &mut visitor);
+                // tokio::select! {
+                //     res = fut => res?,
+                //     Some(ack) = stop_rx.recv() => {
+                //         info!("[controller] stop");
+                //         engine.stop().await?;
+                //         info!("send ack");
+                //         _ = ack.send(());
+                //     }
+                // }
             }
         }
     }

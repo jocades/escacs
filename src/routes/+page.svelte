@@ -11,7 +11,12 @@
   import ipc from "$lib/ipc";
   import { Button } from "$lib/components/ui/button";
   import { longPgn, shortPgn } from "$lib/chess/test-pgns";
-  import type { Info, Score, StockfishSettings } from "$lib/chess/types";
+  import type {
+    Info,
+    Opening,
+    Score,
+    StockfishSettings,
+  } from "$lib/chess/types";
   import { toColor } from "$lib/chess/util";
 
   const chess = new Chess();
@@ -55,8 +60,6 @@
 
   const tree = new Tree();
 
-  $inspect(tree.cursor, tree.nodes);
-
   let engineActive = $state(false);
   let searchDone = $state(false);
 
@@ -65,6 +68,10 @@
   }
 
   let goCount = 0;
+
+  let opening: Opening | undefined = $state();
+  $inspect(s);
+  $inspect(opening);
 
   $effect(() => {
     const node = tree.at();
@@ -85,10 +92,26 @@
     s.turn = toColor(chess);
     s.moveNumber = chess.moveNumber();
 
+    console.log("move cursor");
+    let timeout: number | undefined;
     if (engineActive) {
-      searchDone = false;
-      // ipc.go(fen);
+      timeout = setTimeout(async () => {
+        console.log("go");
+        await ipc.go(fen);
+        console.log("end go");
+      }, 1000);
     }
+
+    // if (s.moveNumber < 36) {
+    //   ipc.findOpening(fen).then((o) => {
+    //     opening = o;
+    //   });
+    // }
+
+    return () => {
+      console.log("effect return");
+      if (timeout !== undefined) clearTimeout(timeout);
+    };
   });
 
   function onMove(from: string, to: string) {
@@ -124,7 +147,6 @@
   const infos: Info[] = $state([]);
 
   chan.onmessage = (data) => {
-    console.log("onMessage", data);
     infos[data.multipv - 1] = data;
     if (
       data.multipv === stockfishSettings.multiPV &&
@@ -145,6 +167,7 @@
       engineActive = true;
     });
     // tree.loadPgn(chess, shortPgn);
+    invoke("test_obj", { value: stockfishSettings });
 
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -153,7 +176,8 @@
   });
 
   function onInfoClick(pv: number, index: number) {
-    for (const m of infos[pv - 1].pv) {
+    for (let i = 0; i < index; i++) {
+      const m = infos[pv - 1].pv[i];
     }
   }
 </script>
