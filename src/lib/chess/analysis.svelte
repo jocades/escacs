@@ -17,7 +17,6 @@
   } = $props();
 
   const mainInfo = $derived(infos[0]);
-  // $inspect(mainInfo);
 
   function normScore(score: Score) {
     if (score?.cp === undefined) return 0;

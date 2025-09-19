@@ -38,7 +38,7 @@ async fn controller(
         match op {
             Op::Go(job) => {
                 info!("new job");
-                let cmd = engine.prepare(job);
+                let cmd = job.to_cmd();
                 engine.tx.send(cmd).await?;
                 loop {
                     tokio::select! {

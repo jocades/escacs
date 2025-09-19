@@ -18,6 +18,8 @@
     StockfishSettings,
   } from "$lib/chess/types";
   import { toColor } from "$lib/chess/util";
+  import { fetch } from "@tauri-apps/plugin-http";
+  import lichess from "$lib/services/lichess";
 
   const chess = new Chess();
 
@@ -70,8 +72,6 @@
   let goCount = 0;
 
   let opening: Opening | undefined = $state();
-  $inspect(s);
-  $inspect(opening);
 
   $effect(() => {
     const node = tree.at();
@@ -85,20 +85,17 @@
       playMoveSound(node);
     }
 
-    // use this to invoke since `s.fen` will trigger causing a invoke call.
+    // use this to invoke since `s.fen` will trigger causing an invoke call.
     const fen = chess.fen();
     s.fen = fen;
     s.lastMove = isStart ? undefined : [node.move.from, node.move.to];
     s.turn = toColor(chess);
     s.moveNumber = chess.moveNumber();
 
-    console.log("move cursor");
     let timeout: number | undefined;
     if (engineActive) {
       timeout = setTimeout(async () => {
-        console.log("go");
         await ipc.go(fen);
-        console.log("end go");
       }, 1000);
     }
 
@@ -163,9 +160,9 @@
   });
 
   onMount(() => {
-    ipc.startEngine(chan).then(() => {
-      engineActive = true;
-    });
+    // ipc.startEngine(chan).then(() => {
+    //   engineActive = true;
+    // });
     // tree.loadPgn(chess, shortPgn);
     invoke("test_obj", { value: stockfishSettings });
 
@@ -176,20 +173,29 @@
   });
 
   function onInfoClick(pv: number, index: number) {
-    for (let i = 0; i < index; i++) {
+    console.log("onInfoClick", { pv, index });
+    for (let i = 0; i <= index; i++) {
       const m = infos[pv - 1].pv[i];
+      const move = chess.move(m);
+      tree.add(move);
     }
   }
+
+  const antiNimzo =
+    "rnbqkb1r/pppp1ppp/4pn2/8/2PP4/5N2/PP2PPPP/RNBQKB1R b KQkq - 1 3";
+  const gameId = "QR5UbqUY";
 </script>
 
-<main class="flex h-full justify-center">
+<main class="flex h-[100vh] justify-center items-center">
   <div class="grid grid-cols-2 gap-x-4">
     <div class="flex flex-col gap-2">
       <div class="flex gap-2 h-[500px]">
         <Evaluation {score} />
         <Chessboard {chess} state={s} {onMove} />
       </div>
-      <Button onclick={() => ipc.go(chess.fen())}>Go</Button>
+      <Button onclick={async () => console.log(await lichess.getGame(gameId))}
+        >Go</Button
+      >
     </div>
     <div class="flex flex-col gap-y-2">
       <Analysis state={s} {infos} {onInfoClick} />

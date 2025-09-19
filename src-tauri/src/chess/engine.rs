@@ -108,24 +108,8 @@ impl Engine {
         Ok(())
     }
 
-    pub fn prepare(&self, job: Go) -> String {
-        let mut cmd = "position".to_string();
-        match &job.fen {
-            None => _ = write!(&mut cmd, " startpos"),
-            Some(fen) => _ = write!(&mut cmd, " fen {fen}"),
-        };
-        if !job.moves.is_empty() {
-            _ = write!(&mut cmd, " moves {}", job.moves.join(" "));
-        }
-        cmd.push('\n');
-
-        _ = writeln!(&mut cmd, "go depth {}", job.depth);
-
-        cmd
-    }
-
     pub async fn go(&mut self, job: Go) -> Result<(Info, BestMove)> {
-        let cmd = self.prepare(job);
+        let cmd = job.to_cmd();
         self.tx.send(cmd).await?;
 
         let mut info: Option<Info> = None;
@@ -150,7 +134,7 @@ impl Engine {
 
     pub async fn go_with<V: Visitor>(&mut self, job: Go, visitor: &mut V) -> Result<()> {
         println!("go_with");
-        let cmd = self.prepare(job);
+        let cmd = job.to_cmd();
         self.tx.send(cmd).await?;
 
         self.is_searching = true;
@@ -170,7 +154,7 @@ impl Engine {
     }
 
     pub async fn search(&mut self, job: Go, tx: mpsc::Sender<Search>) -> Result<()> {
-        let cmd = self.prepare(job);
+        let cmd = job.to_cmd();
         self.tx.send(cmd).await?;
 
         while let Some(line) = self.rx.recv().await {
@@ -186,9 +170,9 @@ impl Engine {
 
 #[derive(Debug, Default, Clone)]
 pub struct Go {
-    fen: Option<String>,
-    moves: Vec<String>,
-    depth: u32,
+    pub fen: Option<String>,
+    pub moves: Vec<String>,
+    pub depth: u32,
 }
 
 impl Go {
@@ -222,6 +206,22 @@ impl Go {
 
     pub async fn execute_with(self, engine: &mut Engine, visitor: &mut impl Visitor) -> Result<()> {
         engine.go_with(self, visitor).await
+    }
+
+    pub fn to_cmd(&self) -> String {
+        let mut cmd = "position".to_string();
+        match &self.fen {
+            None => _ = write!(&mut cmd, " startpos"),
+            Some(fen) => _ = write!(&mut cmd, " fen {fen}"),
+        };
+        if !self.moves.is_empty() {
+            _ = write!(&mut cmd, " moves {}", self.moves.join(" "));
+        }
+        cmd.push('\n');
+
+        _ = writeln!(&mut cmd, "go depth {}", self.depth);
+
+        cmd
     }
 }
 
@@ -258,6 +258,14 @@ impl Default for Score {
 impl Score {
     pub fn is_checkmate(&self) -> bool {
         matches!(self, Self::Mate(_))
+    }
+
+    pub fn normalize(&mut self, is_white: bool) {
+        match self {
+            Score::Cp(n) if !is_white => *n *= -1,
+            Score::Mate(n) if !is_white => *n *= -1,
+            _ => {}
+        }
     }
 }
 

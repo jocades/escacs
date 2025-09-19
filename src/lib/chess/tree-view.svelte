@@ -120,25 +120,3 @@
     </div>
   </div>
 </div>
-
-<!-- <style> -->
-<!--   /* Works in Chrome, Edge, Safari */ -->
-<!--   .flex-1::-webkit-scrollbar { -->
-<!--     width: 6px; /* thin */ -->
-<!--   } -->
-<!---->
-<!--   .flex-1::-webkit-scrollbar-track { -->
-<!--     background: transparent; /* no rectangle */ -->
-<!--   } -->
-<!---->
-<!--   .flex-1::-webkit-scrollbar-thumb { -->
-<!--     background-color: black; /* subtle thumb */ -->
-<!--     border-radius: 4px; -->
-<!--   } -->
-<!---->
-<!--   /* Works in Firefox */ -->
-<!--   .flex-1 { -->
-<!--     scrollbar-width: thin; -->
-<!--     scrollbar-color: rgba(100, 100, 100, 0.5) transparent; -->
-<!--   } -->
-<!-- </style> -->

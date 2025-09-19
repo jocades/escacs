@@ -3,6 +3,9 @@ use std::sync::{
     Arc,
 };
 
+use shakmaty::{
+    fen::Fen, san::San, uci::UciMove, CastlingMode, Chess, Color, FromSetup, Position, Setup,
+};
 use tauri::{Builder, Manager, State};
 use tokio::{
     select,
@@ -16,6 +19,7 @@ use crate::chess::{
 };
 
 pub mod chess;
+pub mod database;
 
 struct AppState {
     handle: Handle,
@@ -40,6 +44,22 @@ pub struct EngineManager {
     rx: mpsc::Receiver<Op>,
 }
 
+fn uci_to_san(chess: &mut Chess, uci_move: &str) -> anyhow::Result<String> {
+    let m = uci_move.parse::<UciMove>()?.to_move(chess)?;
+    chess.play_unchecked(m);
+    Ok(San::from_move(chess, m).to_string())
+}
+
+fn prettyfy(fen: &str, info: &mut Info) -> anyhow::Result<()> {
+    let fen = fen.parse::<Fen>()?;
+    let mut chess: Chess = fen.into_position(CastlingMode::Standard)?;
+
+    for uci_move in info.pv.iter_mut() {
+        *uci_move = uci_to_san(&mut chess, uci_move)?;
+    }
+    Ok(())
+}
+
 async fn controller(
     mut engine: Engine,
     mut job_rx: mpsc::Receiver<Go>,
@@ -48,21 +68,26 @@ async fn controller(
     is_searching: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     while let Some(job) = job_rx.recv().await {
-        let cmd = engine.prepare(job);
-        engine.tx.send(cmd).await?;
+        debug!("new job");
+        engine.tx.send(job.to_cmd()).await?;
         is_searching.store(true, Ordering::SeqCst);
+
         loop {
             select! {
                 Some(line) = engine.rx.recv() => match search(&line)? {
-                    Some(Search::Info(i)) => chan.send(i)?,
+                    Some(Search::Info(mut info)) => {
+                        prettyfy(job.fen.as_ref().unwrap(), &mut info)?;
+                        chan.send(info)?;
+                    },
                     Some(Search::BestMove(_)) => {},
                     None => continue,
                 },
                 Some(ack) = stop_rx.recv() => {
                     engine.stop().await?;
+                    debug!("engine stop");
                     _ = ack.send(());
                     break;
-                }
+                },
                 else => break,
             }
         }
@@ -117,7 +142,7 @@ impl EngineManager {
                         is_searching,
                     } = &mut self.engines[0];
 
-                    debug!(?is_searching, ?job);
+                    debug!(?is_searching);
 
                     if is_searching.load(Ordering::SeqCst) {
                         let (ack, syn) = oneshot::channel();
@@ -208,6 +233,7 @@ fn test_obj(value: serde_json::Map<String, serde_json::Value>) {
 pub fn run() {
     Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
             start_engine,
             go,
@@ -246,7 +272,7 @@ fn setup_logging() {
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .without_time()
-        // .with_target(false)
-        // .compact()
+        .with_target(true)
+        .compact()
         .init();
 }
