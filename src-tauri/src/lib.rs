@@ -9,7 +9,7 @@ use shakmaty::{
 use tauri::{Builder, Manager, State};
 use tokio::{
     select,
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, Mutex},
 };
 use tracing::{debug, error, Instrument};
 
@@ -22,26 +22,26 @@ pub mod chess;
 pub mod database;
 
 struct AppState {
-    handle: Handle,
+    manager: Arc<Mutex<EngineManager>>,
     client_restart_count: AtomicUsize,
 }
 
 static mut CALL_COUNT: usize = 0;
 
 enum Op {
-    Start(tauri::ipc::Channel<Info>, oneshot::Sender<usize>),
     Go(Go),
+    NewGame,
 }
 
 struct EngineEntry {
-    job_tx: mpsc::Sender<Go>,
+    tx: mpsc::Sender<Op>,
     stop_tx: mpsc::Sender<oneshot::Sender<()>>,
     is_searching: Arc<AtomicBool>,
 }
 
+#[derive(Default)]
 pub struct EngineManager {
     engines: Vec<EngineEntry>,
-    rx: mpsc::Receiver<Op>,
 }
 
 fn uci_to_san(chess: &mut Chess, uci_move: &str) -> anyhow::Result<String> {
@@ -62,132 +62,119 @@ fn prettyfy(fen: &str, info: &mut Info) -> anyhow::Result<()> {
 
 async fn controller(
     mut engine: Engine,
-    mut job_rx: mpsc::Receiver<Go>,
+    mut rx: mpsc::Receiver<Op>,
     mut stop_rx: mpsc::Receiver<oneshot::Sender<()>>,
     chan: tauri::ipc::Channel<Info>,
     is_searching: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
-    while let Some(job) = job_rx.recv().await {
-        debug!("new job");
-        engine.tx.send(job.to_cmd()).await?;
-        is_searching.store(true, Ordering::SeqCst);
+    while let Some(op) = rx.recv().await {
+        match op {
+            Op::Go(job) => {
+                debug!("new job");
+                engine.tx.send(job.to_cmd()).await?;
+                is_searching.store(true, Ordering::SeqCst);
 
-        loop {
-            select! {
-                Some(line) = engine.rx.recv() => match search(&line)? {
-                    Some(Search::Info(mut info)) => {
-                        prettyfy(job.fen.as_ref().unwrap(), &mut info)?;
-                        chan.send(info)?;
-                    },
-                    Some(Search::BestMove(_)) => {},
-                    None => continue,
-                },
-                Some(ack) = stop_rx.recv() => {
-                    engine.stop().await?;
-                    debug!("engine stop");
-                    _ = ack.send(());
-                    break;
-                },
-                else => break,
+                loop {
+                    select! {
+                        Some(line) = engine.rx.recv() => match search(&line)? {
+                            Some(Search::Info(mut info)) => {
+                                prettyfy(job.fen.as_ref().unwrap(), &mut info)?;
+                                chan.send(info)?;
+                            },
+                            Some(Search::BestMove(_)) => {},
+                            None => continue,
+                        },
+                        Some(ack) = stop_rx.recv() => {
+                            engine.stop().await?;
+                            debug!("engine stop");
+                            _ = ack.send(());
+                            break;
+                        },
+                        else => break,
+                    }
+                }
+                is_searching.store(false, Ordering::SeqCst);
+            }
+            Op::NewGame => {
+                engine.tx.send("ucinewgame".into()).await?;
+                engine.isready().await?;
             }
         }
-        is_searching.store(false, Ordering::SeqCst);
     }
     Ok(())
 }
 
 impl EngineManager {
-    async fn run(&mut self) -> anyhow::Result<()> {
-        let _span = tracing::debug_span!("manager");
-        while let Some(op) = self.rx.recv().await {
-            match op {
-                Op::Start(chan, ack) => {
-                    if self.engines.len() > 0 {
-                        continue;
-                    }
-                    let mut engine = Engine::new("stockfish")?;
-                    let opts = [("Threads", "8"), ("UCI_ShowWDL", "true"), ("MultiPV", "3")];
-                    engine.uci().await?;
-                    engine.opts(&opts).await?;
-                    engine.isready().await?;
+    async fn start_engine(&mut self, chan: tauri::ipc::Channel<Info>) -> anyhow::Result<()> {
+        if self.engines.len() > 0 {
+            return Ok(());
+        }
 
-                    let (job_tx, job_rx) = mpsc::channel(32);
-                    let (stop_tx, stop_rx) = mpsc::channel(1);
-                    let is_searching = Arc::new(AtomicBool::new(false));
+        let mut engine = Engine::new("stockfish")?;
+        let opts = [("Threads", "8"), ("UCI_ShowWDL", "true"), ("MultiPV", "3")];
+        engine.uci().await?;
+        engine.opts(&opts).await?;
+        engine.isready().await?;
 
-                    let entry = EngineEntry {
-                        job_tx,
-                        stop_tx,
-                        is_searching: is_searching.clone(),
-                    };
-                    self.engines.push(entry);
+        let (tx, rx) = mpsc::channel(32);
+        let (stop_tx, stop_rx) = mpsc::channel(1);
+        let is_searching = Arc::new(AtomicBool::new(false));
 
-                    tauri::async_runtime::spawn(
-                        async move {
-                            if let Err(e) =
-                                controller(engine, job_rx, stop_rx, chan, is_searching).await
-                            {
-                                tracing::error!(cause = %e, "controller error");
-                            }
-                        }
-                        .instrument(tracing::trace_span!("controller")),
-                    );
+        self.engines.push(EngineEntry {
+            tx,
+            stop_tx,
+            is_searching: is_searching.clone(),
+        });
 
-                    _ = ack.send(self.engines.len() - 1);
-                }
-                Op::Go(job) => {
-                    let EngineEntry {
-                        job_tx,
-                        stop_tx,
-                        is_searching,
-                    } = &mut self.engines[0];
-
-                    debug!(?is_searching);
-
-                    if is_searching.load(Ordering::SeqCst) {
-                        let (ack, syn) = oneshot::channel();
-                        stop_tx.send(ack).await?;
-                        syn.await?;
-                    }
-
-                    job_tx.send(job).await?;
+        tauri::async_runtime::spawn(
+            async move {
+                if let Err(e) = controller(engine, rx, stop_rx, chan, is_searching).await {
+                    tracing::error!(cause = %e, "controller error");
                 }
             }
-        }
+            .instrument(tracing::trace_span!("controller")),
+        );
+
         Ok(())
     }
-}
 
-pub struct Handle {
-    tx: mpsc::Sender<Op>,
-}
+    async fn go(&mut self, fen: &str) -> anyhow::Result<()> {
+        let EngineEntry {
+            tx,
+            stop_tx,
+            is_searching,
+        } = &mut self.engines[0];
 
-impl Handle {
-    pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel(100);
-        let mut manager = EngineManager {
-            rx,
-            engines: Vec::new(),
-        };
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = manager.run().await {
-                error!(cause = %e, "manager error");
-            }
-        });
-        Self { tx }
+        debug!(?is_searching);
+
+        if is_searching.load(Ordering::SeqCst) {
+            let (ack, syn) = oneshot::channel();
+            stop_tx.send(ack).await?;
+            syn.await?;
+        }
+
+        let job = Go::new().fen(fen).depth(26);
+        tx.send(Op::Go(job)).await?;
+
+        Ok(())
     }
 
-    pub async fn start_engine(&self, chan: tauri::ipc::Channel<Info>) {
-        let (ack, syn) = oneshot::channel();
-        self.tx
-            .send(Op::Start(chan, ack))
-            .await
-            .expect("manager died");
-        syn.await.unwrap();
-    }
+    async fn new_game(&mut self) -> anyhow::Result<()> {
+        let EngineEntry {
+            tx,
+            stop_tx,
+            is_searching,
+        } = &mut self.engines[0];
 
-    pub async fn go(&self, job: Go) {
-        self.tx.send(Op::Go(job)).await.expect("manager died");
+        if is_searching.load(Ordering::SeqCst) {
+            let (ack, syn) = oneshot::channel();
+            stop_tx.send(ack).await?;
+            syn.await?;
+        }
+
+        tx.send(Op::NewGame).await?;
+
+        Ok(())
     }
 }
 
@@ -201,20 +188,20 @@ async fn start_engine(
         .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     if n == 0 {
         debug!("start engine");
-        state.handle.start_engine(chan).await;
+        state.manager.lock().await.start_engine(chan).await.unwrap();
     }
     Ok(())
 }
 
 #[tauri::command]
 async fn go(fen: &str, state: State<'_, AppState>) -> Result<(), String> {
-    unsafe {
-        CALL_COUNT += 1;
-        debug!("call_count = {CALL_COUNT}");
-    };
-    debug!(fen, "GO");
-    let job = Go::new().fen(fen).depth(26);
-    state.handle.go(job).await;
+    state.manager.lock().await.go(fen).await.unwrap();
+    Ok(())
+}
+
+#[tauri::command]
+async fn new_game(state: State<'_, AppState>) -> Result<(), String> {
+    state.manager.lock().await.new_game().await.unwrap();
     Ok(())
 }
 
@@ -237,6 +224,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_engine,
             go,
+            new_game,
             test_what,
             find_opening,
             test_obj,
@@ -245,7 +233,7 @@ pub fn run() {
             setup_logging();
             gather_openings();
             let state = AppState {
-                handle: Handle::new(),
+                manager: Arc::new(Mutex::new(EngineManager::default())),
                 client_restart_count: AtomicUsize::default(),
             };
             app.manage(state);

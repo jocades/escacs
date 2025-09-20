@@ -95,7 +95,6 @@
       if (engineActive) {
         await ipc.go(fen);
       }
-      console.log(await lichess.getGames(fen));
     }, 1000);
 
     // if (s.moveNumber < 36) {
@@ -113,8 +112,7 @@
   });
 
   function onMove(from: string, to: string) {
-    const move = chess.move({ from, to });
-    tree.add(move);
+    tree.add(chess.move({ from, to }));
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -161,11 +159,9 @@
   });
 
   onMount(() => {
-    // ipc.startEngine(chan).then(() => {
-    //   engineActive = true;
-    // });
-    // tree.loadPgn(chess, shortPgn);
-    invoke("test_obj", { value: stockfishSettings });
+    ipc.startEngine(chan).then(() => {
+      engineActive = true;
+    });
 
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -174,17 +170,11 @@
   });
 
   function onInfoClick(pv: number, index: number) {
-    console.log("onInfoClick", { pv, index });
     for (let i = 0; i <= index; i++) {
       const m = infos[pv - 1].pv[i];
-      const move = chess.move(m);
-      tree.add(move);
+      tree.add(chess.move(m));
     }
   }
-
-  const antiNimzo =
-    "rnbqkb1r/pppp1ppp/4pn2/8/2PP4/5N2/PP2PPPP/RNBQKB1R b KQkq - 1 3";
-  const gameId = "QR5UbqUY";
 </script>
 
 <main class="flex h-full justify-center">
@@ -194,12 +184,6 @@
         <Evaluation {score} />
         <Chessboard {chess} state={s} {onMove} />
       </div>
-      <Button
-        onclick={async () => {
-          // const data = await lichess.getGames(antiNimzo);
-          // localStorage.setItem("lch-games", JSON.stringify(data));
-        }}>Go</Button
-      >
     </div>
     <div class="flex flex-col gap-y-2">
       <Analysis state={s} {chess} {tree} {infos} {onInfoClick} />

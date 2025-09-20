@@ -8,6 +8,7 @@
   import { Separator } from "$lib/components/ui/separator/index";
   import { cn } from "$lib/utils";
   import { SquareIcon } from "@lucide/svelte";
+  import { Input } from "$lib/components/ui/input";
 
   const {
     state: s,
@@ -39,9 +40,23 @@
       }
     };
   });
+
+  let filteredPlayer = $state("");
+  const filteredTopGames = $derived.by(() => {
+    if (!filteredPlayer) {
+      return games?.topGames ?? [];
+    }
+
+    return games?.topGames.filter(
+      (g) =>
+        g.white.name.toLowerCase().includes(filteredPlayer.toLowerCase()) ||
+        g.black.name.toLowerCase().includes(filteredPlayer.toLowerCase()),
+    );
+  });
 </script>
 
 <ScrollArea class="h-[250px]">
+  <h2 class="font-bold tracking-tight px-2">Top Moves</h2>
   <Table.Root class="text-xs">
     <Table.Header>
       <Table.Row>
@@ -88,11 +103,24 @@
   </Table.Root>
   <Separator class="my-2" />
   <div class="flex flex-col">
-    <h2 class="font-bold tracking-tight pb-2 px-2">Top Games</h2>
-    {#if games !== undefined}
+    <div class="flex items-center justify-between pb-2 px-2">
+      <h2 class="font-bold tracking-tight">Top Games</h2>
+      <Input
+        placeholder="Filter player..."
+        autocorrect="off"
+        class="w-64 h-6"
+        bind:value={filteredPlayer}
+      />
+    </div>
+    {#if filteredTopGames !== undefined}
       <div class="flex flex-col">
-        {#each games.topGames as topGame, index}
+        {#each filteredTopGames as topGame, index}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <div
+            onclick={async () => {
+              const game = await lichess.getGame(topGame.id);
+              tree.loadPgn(chess, game.pgn);
+            }}
             class={cn(
               "grid grid-cols-4 items-center text-xs p-2 hover:bg-accent cursor-pointer",
               index % 2 === 0 ? "bg-sidebar" : "bg-zinc-500/10",
