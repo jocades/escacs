@@ -1,7 +1,7 @@
 const base = "https://lichess.org"
 const explorer = "https://explorer.lichess.ovh"
 
-namespace lichess {
+export namespace lch {
   export interface Opening {
     eco: string
     name: string
@@ -51,33 +51,37 @@ namespace lichess {
     | "unknownFinish"
     | "insufficientMaterialClaim"
     | "variantEnd"
+
+  export interface ExplorerMove {
+    opening: lch.Opening | null
+    averageRating: number
+    white: number
+    draws: number
+    black: number
+    uci: string
+    san: string
+  }
+
+  export interface ExplorerTopGame {
+    id: string
+    uci: string
+    white: lch.Player
+    black: lch.Player
+    winner: "white" | "black" | null
+    year: number
+    month: string // `year-month`
+  }
 }
 
 async function getGames(fen: string) {
   const res = await fetch(`${explorer}/masters?fen=${fen}`)
   return (await res.json()) as {
-    opening: lichess.Opening | null
+    opening: lch.Opening | null
     white: number
     draws: number
     black: number
-    moves: {
-      opening: lichess.Opening | null
-      averageRating: number
-      white: number
-      draws: number
-      black: number
-      uci: string
-      san: string
-    }[]
-    topGames: {
-      id: string
-      uci: string
-      white: lichess.Player
-      black: lichess.Player
-      winner: "white" | "black"
-      year: number
-      month: string // `year-month`
-    }[]
+    moves: lch.ExplorerMove[]
+    topGames: lch.ExplorerTopGame[]
   }
 }
 
@@ -87,15 +91,15 @@ async function getGame(id: string) {
   })
   return (await res.json()) as {
     id: string
-    opening: lichess.Opening | null
-    players: { white: lichess.PlayerWithAnalysis; black: lichess.PlayerWithAnalysis }
+    opening: lch.Opening | null
+    players: { white: lch.PlayerWithAnalysis; black: lch.PlayerWithAnalysis }
     pgn: string
     moves: string
     rated: boolean
     source: string
-    variant: lichess.Variant
-    speed: lichess.Speed
-    status: lichess.Status
+    variant: lch.Variant
+    speed: lch.Speed
+    status: lch.Status
     createdAt: number
     division: { middle: number; end: number }
     import: { date: string }

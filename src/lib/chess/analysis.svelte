@@ -1,17 +1,23 @@
 <script lang="ts">
   import * as Tabs from "$lib/components/ui/tabs";
-  import { SearchIcon, SettingsIcon } from "@lucide/svelte";
+  import { DatabaseIcon, SearchIcon, SettingsIcon } from "@lucide/svelte";
   import type { Info, Score } from "./types";
-  import { type State } from "./tree.svelte";
+  import { Tree, type State } from "./tree.svelte";
   import { cn } from "$lib/utils";
   import { Separator } from "$lib/components/ui/separator";
+  import Database from "./database.svelte";
+  import type { Chess } from "chess.js";
 
   const {
     state: s,
+    chess,
+    tree,
     infos,
     onInfoClick,
   }: {
     state: State;
+    chess: Chess;
+    tree: Tree;
     infos: Info[];
     onInfoClick: (pv: number, index: number) => void;
   } = $props();
@@ -45,7 +51,10 @@
         <SearchIcon />
         Analysis
       </Tabs.Trigger>
-      <Tabs.Trigger value="other">Other</Tabs.Trigger>
+      <Tabs.Trigger value="database">
+        <DatabaseIcon />
+        Database
+      </Tabs.Trigger>
     </Tabs.List>
     <Tabs.Content value="analysis" class="px-2 select-none">
       <div class="flex items-center justify-between">
@@ -90,6 +99,8 @@
         </div>
       {/if}
     </Tabs.Content>
-    <Tabs.Content value="other">DEF</Tabs.Content>
+    <Tabs.Content value="database" class="">
+      <Database state={s} {chess} {tree} />
+    </Tabs.Content>
   </Tabs.Root>
 </div>

@@ -70,7 +70,6 @@
   }
 
   let goCount = 0;
-
   let opening: Opening | undefined = $state();
 
   $effect(() => {
@@ -92,12 +91,12 @@
     s.turn = toColor(chess);
     s.moveNumber = chess.moveNumber();
 
-    let timeout: number | undefined;
-    if (engineActive) {
-      timeout = setTimeout(async () => {
+    let timeout: number | undefined = setTimeout(async () => {
+      if (engineActive) {
         await ipc.go(fen);
-      }, 1000);
-    }
+      }
+      console.log(await lichess.getGames(fen));
+    }, 1000);
 
     // if (s.moveNumber < 36) {
     //   ipc.findOpening(fen).then((o) => {
@@ -106,8 +105,10 @@
     // }
 
     return () => {
-      console.log("effect return");
-      if (timeout !== undefined) clearTimeout(timeout);
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+        timeout = undefined;
+      }
     };
   });
 
@@ -186,19 +187,22 @@
   const gameId = "QR5UbqUY";
 </script>
 
-<main class="flex h-[100vh] justify-center items-center">
+<main class="flex h-full justify-center">
   <div class="grid grid-cols-2 gap-x-4">
     <div class="flex flex-col gap-2">
       <div class="flex gap-2 h-[500px]">
         <Evaluation {score} />
         <Chessboard {chess} state={s} {onMove} />
       </div>
-      <Button onclick={async () => console.log(await lichess.getGame(gameId))}
-        >Go</Button
+      <Button
+        onclick={async () => {
+          // const data = await lichess.getGames(antiNimzo);
+          // localStorage.setItem("lch-games", JSON.stringify(data));
+        }}>Go</Button
       >
     </div>
     <div class="flex flex-col gap-y-2">
-      <Analysis state={s} {infos} {onInfoClick} />
+      <Analysis state={s} {chess} {tree} {infos} {onInfoClick} />
       <TreeView {tree} />
     </div>
   </div>
