@@ -1,13 +1,13 @@
 <script lang="ts">
-  import Chessboard from "$lib/chess/chessboard.svelte";
-  import TreeView from "$lib/chess/tree-view.svelte";
+  import Chessboard from "$lib/components/chess/chessboard.svelte";
+  import TreeView from "$lib/components/chess/tree-view.svelte";
 
   import { Chess } from "chess.js";
   import { Tree, type MoveNode, type State } from "$lib/chess/tree.svelte";
   import { onMount } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
-  import Analysis from "$lib/chess/analysis.svelte";
-  import Evaluation from "$lib/chess/evaluation.svelte";
+  import Analysis from "$lib/components/chess/analysis.svelte";
+  import Evaluation from "$lib/components/chess/evaluation.svelte";
   import ipc from "$lib/ipc";
   import { Button } from "$lib/components/ui/button";
   import { longPgn, shortPgn } from "$lib/chess/test-pgns";
@@ -159,9 +159,9 @@
   });
 
   onMount(() => {
-    ipc.startEngine(chan).then(() => {
-      engineActive = true;
-    });
+    // ipc.startEngine(chan).then(() => {
+    //   engineActive = true;
+    // });
 
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -177,7 +177,7 @@
   }
 </script>
 
-<main class="flex h-full justify-center">
+<div class="flex h-full justify-center items-center">
   <div class="grid grid-cols-2 gap-x-4">
     <div class="flex flex-col gap-2">
       <div class="flex gap-2 h-[500px]">
@@ -190,4 +190,4 @@
       <TreeView {tree} />
     </div>
   </div>
-</main>
+</div>

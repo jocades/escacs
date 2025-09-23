@@ -11,6 +11,8 @@ export interface MoveNode {
   move: Move
   variations?: number[]
   prev: Cursor
+  comment?: string
+  nags?: string[]
 }
 
 export interface State {

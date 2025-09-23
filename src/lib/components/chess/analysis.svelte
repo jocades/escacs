@@ -1,8 +1,8 @@
 <script lang="ts">
   import * as Tabs from "$lib/components/ui/tabs";
   import { DatabaseIcon, SearchIcon, SettingsIcon } from "@lucide/svelte";
-  import type { Info, Score } from "./types";
-  import { Tree, type State } from "./tree.svelte";
+  import type { Info, Score } from "$lib/chess/types";
+  import { Tree, type State } from "$lib/chess/tree.svelte";
   import { cn } from "$lib/utils";
   import { Separator } from "$lib/components/ui/separator";
   import Database from "./database.svelte";

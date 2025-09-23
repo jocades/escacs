@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { MoveNode, Tree } from "./tree.svelte";
+  import type { MoveNode, Tree } from "$lib/chess/tree.svelte";
   import { Button } from "$lib/components/ui/button";
   import {
     ChevronLeftIcon,

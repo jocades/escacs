@@ -3,12 +3,13 @@
   import lichess from "$lib/services/lichess";
   import * as Table from "$lib/components/ui/table/index";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index";
-  import type { Tree, State } from "./tree.svelte";
+  import type { Tree, State } from "$lib/chess/tree.svelte";
   import type { Chess } from "chess.js";
   import { Separator } from "$lib/components/ui/separator/index";
   import { cn } from "$lib/utils";
   import { SquareIcon } from "@lucide/svelte";
   import { Input } from "$lib/components/ui/input";
+  import ipc from "$lib/ipc";
 
   const {
     state: s,
@@ -53,6 +54,12 @@
         g.black.name.toLowerCase().includes(filteredPlayer.toLowerCase()),
     );
   });
+
+  async function loadGame(id: string) {
+    const game = await lichess.getGame(id);
+    await ipc.newGame();
+    tree.loadPgn(chess, game.pgn);
+  }
 </script>
 
 <ScrollArea class="h-[250px]">
@@ -117,10 +124,7 @@
         {#each filteredTopGames as topGame, index}
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <div
-            onclick={async () => {
-              const game = await lichess.getGame(topGame.id);
-              tree.loadPgn(chess, game.pgn);
-            }}
+            onclick={async () => await loadGame(topGame.id)}
             class={cn(
               "grid grid-cols-4 items-center text-xs p-2 hover:bg-accent cursor-pointer",
               index % 2 === 0 ? "bg-sidebar" : "bg-zinc-500/10",

@@ -98,6 +98,7 @@ async fn controller(
             Op::NewGame => {
                 engine.tx.send("ucinewgame".into()).await?;
                 engine.isready().await?;
+                debug!("NEW GAME READY");
             }
         }
     }
@@ -106,7 +107,7 @@ async fn controller(
 
 impl EngineManager {
     async fn start_engine(&mut self, chan: tauri::ipc::Channel<Info>) -> anyhow::Result<()> {
-        if self.engines.len() > 0 {
+        if !self.engines.is_empty() {
             return Ok(());
         }
 

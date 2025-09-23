@@ -152,20 +152,6 @@ impl Engine {
 
         Ok(())
     }
-
-    pub async fn search(&mut self, job: Go, tx: mpsc::Sender<Search>) -> Result<()> {
-        let cmd = job.to_cmd();
-        self.tx.send(cmd).await?;
-
-        while let Some(line) = self.rx.recv().await {
-            match search(&line)? {
-                Some(x) => tx.send(x).await?,
-                None => continue,
-            };
-        }
-
-        Ok(())
-    }
 }
 
 #[derive(Debug, Default, Clone)]

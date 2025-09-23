@@ -17,3 +17,14 @@ export function toDests(chess: Chess) {
 export function toColor(chess: Chess) {
   return chess.turn() == "w" ? "white" : "black"
 }
+
+export const pieceChars = { king: "♔", queen: "♕", rook: "♖", bishop: "♗", knight: "♘" }
+
+export const nag = {
+  brilliant: { text: "!!", color: "cyan" },
+  good: { text: "!", color: "teal" },
+  interesting: { text: "!?", color: "lime" },
+  dubious: { text: "?!", color: "yellow" },
+  mistake: { text: "?", color: "orange" },
+  blunder: { text: "??", color: "red" },
+}

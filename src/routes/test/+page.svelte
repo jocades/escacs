@@ -14,12 +14,14 @@
   onMount(() => {
     greet();
   });
+
+  const items = Array.from({ length: 50 }, (_, i) => i);
 </script>
 
-<section class="w-1/2">
-  <Input bind:value />
-  <Button onclick={() => greet()}>X</Button>
-  {#if result}
-    <div>{result}</div>
-  {/if}
-</section>
+<div class="flex flex-col gap-4">
+  {#each items as item}
+    <div class="size-20 bg-blue-200 flex items-center justify-center">
+      {item}
+    </div>
+  {/each}
+</div>

@@ -7,8 +7,8 @@
   import { Chessground } from "chessground";
   import type { Api as Board } from "chessground/api";
 
-  import { toColor, toDests } from "../chess/util";
-  import type { State } from "../chess/tree.svelte";
+  import { toColor, toDests } from "$lib/chess/util";
+  import type { State } from "$lib/chess/tree.svelte";
 
   import { onMount } from "svelte";
 
