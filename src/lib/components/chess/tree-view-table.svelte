@@ -45,7 +45,7 @@
   </button>
 {/snippet}
 
-<div class="flex flex-col h-full max-h-[80vh] max-w-[500px] bg-sidebar">
+<div class="flex flex-col h-full w-full bg-sidebar">
   <h2 class="px-2 py-2 font-bold">Moves</h2>
   <div class="flex-1 overflow-y-auto">
     <table class="w-full [&_td]:py-1 text-sm">

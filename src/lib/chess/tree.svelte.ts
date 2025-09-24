@@ -15,14 +15,6 @@ export interface MoveNode {
   nags?: string[]
 }
 
-export interface State {
-  fen: string
-  turn: Color
-  lastMove: [Key, Key] | undefined
-  orientation: Color
-  moveNumber: number
-}
-
 export class Tree {
   /**
    * main line -> index 0
@@ -169,5 +161,24 @@ export class Tree {
       }
       this.next()
     }, 300)
+  }
+
+  bind = (e: KeyboardEvent) => {
+    switch (e.key) {
+      case "ArrowLeft":
+        this.prev()
+        break
+      case "ArrowRight":
+        this.next()
+        break
+      case "ArrowUp":
+        this.last()
+        break
+      case "ArrowDown":
+        this.first()
+        break
+      default:
+        break
+    }
   }
 }

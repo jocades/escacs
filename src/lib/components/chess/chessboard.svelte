@@ -8,17 +8,18 @@
   import type { Api as Board } from "chessground/api";
 
   import { toColor, toDests } from "$lib/chess/util";
-  import type { State } from "$lib/chess/tree.svelte";
 
   import { onMount } from "svelte";
+  import type { BoardState } from "$lib/chess/state.svelte";
+  import { DropdownMenuShortcut } from "../ui/dropdown-menu";
 
   interface ChessboardProps {
     chess: Chess;
-    state: State;
+    boardState: BoardState;
     onMove?: (from: string, to: string) => void;
   }
 
-  let { chess, state, onMove }: ChessboardProps = $props();
+  let { chess, boardState, onMove }: ChessboardProps = $props();
 
   let cg: Board;
   onMount(() => {
@@ -41,16 +42,42 @@
         },
       },
     });
+
+    const resize = document.createElement("cg-resize");
+    resize.onmousedown = (e) => {
+      e.stopPropagation();
+      const bounds = cg.state.dom.bounds();
+      const startX = e.clientX;
+      const startY = e.clientY;
+
+      const mouseMove = (e: MouseEvent) => {
+        resize.className = "active";
+        const width = bounds.width + e.clientX - startX;
+        const height = bounds.height + e.clientY - startY;
+        boardState.width = Math.round(Math.min(width, height) / 8) * 8;
+      };
+
+      const mouseUp = () => {
+        resize.removeAttribute("class");
+        document.removeEventListener("mousemove", mouseMove);
+        document.removeEventListener("mouseup", mouseUp);
+      };
+
+      document.addEventListener("mousemove", mouseMove);
+      document.addEventListener("mouseup", mouseUp);
+    };
+
+    document.querySelector("cg-board")!.appendChild(resize);
   });
 
   $effect(() => {
     cg.set({
-      fen: state.fen,
-      turnColor: state.turn,
+      fen: boardState.fen,
+      turnColor: boardState.turn,
       movable: { dests: toDests(chess) },
       check: chess.isCheck(),
-      lastMove: state.lastMove,
-      orientation: state.orientation,
+      lastMove: boardState.lastMove,
+      orientation: boardState.orientation,
       // drawable: {
       //   shapes: [
       //     {
@@ -74,11 +101,11 @@
   });
 </script>
 
-<div id="board"></div>
+<div id="board" style:--boardWidth={`${boardState.width}px`}></div>
 
 <style>
   #board {
-    width: 500px;
-    height: 500px;
+    width: var(--boardWidth);
+    height: var(--boardWidth);
   }
 </style>

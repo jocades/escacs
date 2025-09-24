@@ -3,32 +3,49 @@
   import lichess from "$lib/services/lichess";
   import * as Table from "$lib/components/ui/table/index";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index";
-  import type { Tree, State } from "$lib/chess/tree.svelte";
+  import type { Tree } from "$lib/chess/tree.svelte";
   import type { Chess } from "chess.js";
   import { Separator } from "$lib/components/ui/separator/index";
   import { cn } from "$lib/utils";
   import { SquareIcon } from "@lucide/svelte";
   import { Input } from "$lib/components/ui/input";
   import ipc from "$lib/ipc";
+  import type { BoardState } from "$lib/chess/state.svelte";
 
   const {
-    state: s,
-    chess,
     tree,
+    chess,
+    boardState,
   }: {
-    state: State;
-    chess: Chess;
     tree: Tree;
+    chess: Chess;
+    boardState: BoardState;
   } = $props();
-
-  // const games: Awaited<ReturnType<typeof lichess.getGames>> = JSON.parse(
-  //   localStorage.getItem("lch-games")!,
-  // );
 
   let games: Awaited<ReturnType<typeof lichess.getGames>> | undefined =
     $state();
 
-  $effect(() => {
+  function debounce<T>(cb: (...args: T[]) => any, ms: number) {
+    let timeout: number | undefined;
+
+    return (...args: T[]) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => cb(...args), ms);
+    };
+  }
+
+  // const update = debounce(async (fen: string) => {
+  //   games = await lichess.getGames(fen);
+  // }, 500);
+
+  // $effect(() => update(s.fen));
+
+  // debounce(async () => {
+  //   const fen = s.fen;
+  //   games = await lichess.getGames(fen);
+  // }, 500);
+
+  /* $effect(() => {
     const fen = s.fen;
     let timeout: number | undefined = setTimeout(async () => {
       console.log("get games");
@@ -40,7 +57,7 @@
         timeout = undefined;
       }
     };
-  });
+  }); */
 
   let filteredPlayer = $state("");
   const filteredTopGames = $derived.by(() => {
@@ -57,7 +74,7 @@
 
   async function loadGame(id: string) {
     const game = await lichess.getGame(id);
-    await ipc.newGame();
+    // await ipc.newGame();
     tree.loadPgn(chess, game.pgn);
   }
 </script>

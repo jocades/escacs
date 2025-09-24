@@ -1,9 +1,9 @@
 <script lang="ts">
   import Chessboard from "$lib/components/chess/chessboard.svelte";
-  import TreeView from "$lib/components/chess/tree-view.svelte";
+  import TreeViewTable from "$lib/components/chess/tree-view-table.svelte";
 
   import { Chess } from "chess.js";
-  import { Tree, type MoveNode, type State } from "$lib/chess/tree.svelte";
+  import { Tree } from "$lib/chess/tree.svelte";
   import { onMount } from "svelte";
   import { Channel, invoke } from "@tauri-apps/api/core";
   import Analysis from "$lib/components/chess/analysis.svelte";
@@ -17,60 +17,41 @@
     Score,
     StockfishSettings,
   } from "$lib/chess/types";
-  import { toColor } from "$lib/chess/util";
+  import { playMoveSound, toColor } from "$lib/chess/util";
   import { fetch } from "@tauri-apps/plugin-http";
   import lichess from "$lib/services/lichess";
-
-  const chess = new Chess();
-
-  const sounds = {
-    move: new Audio("sounds/move-self.mp3"),
-    capture: new Audio("sounds/move-capture.mp3"),
-    check: new Audio("sounds/move-check.mp3"),
-    castle: new Audio("sounds/move-castle.mp3"),
-    promotion: new Audio("sounds/move-promotion.mp3"),
-  };
-
-  function playSound(kind: keyof typeof sounds) {
-    const sound = sounds[kind];
-    // sound.pause();
-    sound.currentTime = 0;
-    sound.play();
-  }
-
-  function playMoveSound(node: MoveNode) {
-    if (chess.inCheck()) {
-      playSound("check");
-    } else if (node.move.isCapture()) {
-      playSound("capture");
-    } else if (node.move.isPromotion()) {
-      playSound("promotion");
-    } else if (node.move.isKingsideCastle() || node.move.isQueensideCastle()) {
-      playSound("castle");
-    } else {
-      playSound("move");
-    }
-  }
-
-  const s: State = $state({
-    fen: chess.fen(),
-    turn: toColor(chess),
-    lastMove: undefined,
-    orientation: "white",
-    moveNumber: chess.moveNumber(),
-  });
+  import type { BoardState } from "$lib/chess/state.svelte";
+  import Notation from "$lib/components/chess/notation.svelte";
 
   const tree = new Tree();
+  const chess = new Chess();
+  const boardState: BoardState = $state({
+    fen: chess.fen(),
+    turn: toColor(chess),
+    orientation: "white",
+    moveNumber: chess.moveNumber(),
+    width: 744,
+  });
 
+  const chan = new Channel<Info>();
+  const infos: Info[] = $state([]);
   let engineActive = $state(false);
-  let searchDone = $state(false);
 
-  async function search() {
-    await ipc.go(chess.fen());
-  }
+  chan.onmessage = (data) => {
+    infos[data.multipv - 1] = data;
+  };
 
-  let goCount = 0;
-  let opening: Opening | undefined = $state();
+  onMount(() => {
+    tree.loadPgn(chess, longPgn);
+    // ipc.startEngine(chan).then(() => {
+    //   engineActive = true;
+    // });
+
+    document.addEventListener("keydown", tree.bind);
+    return () => {
+      document.removeEventListener("keydown", tree.bind);
+    };
+  });
 
   $effect(() => {
     const node = tree.at();
@@ -81,15 +62,15 @@
     } else {
       if (!node) return;
       chess.load(node.move.after);
-      playMoveSound(node);
+      // playMoveSound(chess, node);
     }
 
     // use this to invoke since `s.fen` will trigger causing an invoke call.
     const fen = chess.fen();
-    s.fen = fen;
-    s.lastMove = isStart ? undefined : [node.move.from, node.move.to];
-    s.turn = toColor(chess);
-    s.moveNumber = chess.moveNumber();
+    boardState.fen = fen;
+    boardState.lastMove = isStart ? undefined : [node.move.from, node.move.to];
+    boardState.turn = toColor(chess);
+    boardState.moveNumber = chess.moveNumber();
 
     let timeout: number | undefined = setTimeout(async () => {
       if (engineActive) {
@@ -115,58 +96,15 @@
     tree.add(chess.move({ from, to }));
   }
 
-  function onKeyDown(e: KeyboardEvent) {
-    switch (e.key) {
-      case "ArrowLeft":
-        tree.prev();
-        break;
-      case "ArrowRight":
-        tree.next();
-        break;
-      case "ArrowUp":
-        tree.last();
-        break;
-      case "ArrowDown":
-        tree.first();
-        break;
-      default:
-        break;
-    }
-  }
-
   const stockfishSettings: StockfishSettings = $state({
     multiPV: 3,
     depth: 26,
   });
 
-  const chan = new Channel<Info>();
-  const infos: Info[] = $state([]);
-
-  chan.onmessage = (data) => {
-    infos[data.multipv - 1] = data;
-    if (
-      data.multipv === stockfishSettings.multiPV &&
-      data.depth === stockfishSettings.depth
-    ) {
-      searchDone = true;
-    }
-  };
-
   const score = $derived.by(() => {
     const mainInfo = infos[0];
     if (!mainInfo || !mainInfo.score?.cp) return 0;
     return chess.turn() === "w" ? mainInfo.score?.cp : -mainInfo.score?.cp;
-  });
-
-  onMount(() => {
-    // ipc.startEngine(chan).then(() => {
-    //   engineActive = true;
-    // });
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-    };
   });
 
   function onInfoClick(pv: number, index: number) {
@@ -177,17 +115,17 @@
   }
 </script>
 
-<div class="flex h-full justify-center items-center">
-  <div class="grid grid-cols-2 gap-x-4">
-    <div class="flex flex-col gap-2">
-      <div class="flex gap-2 h-[500px]">
-        <Evaluation {score} />
-        <Chessboard {chess} state={s} {onMove} />
-      </div>
+<div class="flex w-full h-full gap-x-4">
+  <div class="flex flex-col gap-2">
+    <div class="flex gap-2" style:width={boardState.width}>
+      <Evaluation {score} />
+      <Chessboard {chess} {boardState} {onMove} />
     </div>
-    <div class="flex flex-col gap-y-2">
-      <Analysis state={s} {chess} {tree} {infos} {onInfoClick} />
-      <TreeView {tree} />
-    </div>
+  </div>
+  <div class="flex flex-col gap-y-2 flex-grow">
+    <div class="flex flex-1 bg-red-200"></div>
+    <!-- <Analysis {boardState} {chess} {tree} {infos} {onInfoClick} /> -->
+    <!-- <TreeViewTable {tree} /> -->
+    <Notation {tree} />
   </div>
 </div>
