@@ -29,7 +29,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@tanstack/table-core": "^8.21.3",
     "@tauri-apps/cli": "^2",
-    "bits-ui": "^2.11.0",
+    "bits-ui": "^2.11.3",
     "clsx": "^2.1.1",
     "formsnap": "^2.0.1",
     "svelte": "^5.0.0",

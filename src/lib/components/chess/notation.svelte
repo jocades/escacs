@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { MoveNode, Tree } from "$lib/chess/tree.svelte";
-  import * as ContextMenu from "$lib/components/ui/context-menu";
   import { capitalize, cn } from "$lib/utils";
   import { Button, buttonVariants } from "../ui/button";
   import { nag } from "$lib/chess/util";
@@ -18,8 +17,6 @@
     }
     return result;
   });
-
-  let commentText = $state("");
 </script>
 
 {#snippet moveNumber(n: number)}
@@ -32,9 +29,11 @@
     class={cn(
       "cursor-pointer px-0.5 hover:bg-accent rounded",
       node === tree.at() && "bg-zinc-200/20",
+      // node.nag && `text-${node.nag.color}-500`,
     )}
+    style:color={node.nag?.color}
   >
-    {node.move.san}
+    {node.move.san}{node.nag?.text}
   </button>
   {#if node.comment}
     <p class="text-sm text-muted-foreground px-1">{node.comment}</p>
@@ -56,9 +55,6 @@
     <Tooltip.Root>
       <Popover.Trigger>
         <Tooltip.Trigger
-          onclick={() => {
-            tree.at().comment = "This is a comment";
-          }}
           class={buttonVariants({ variant: "outline", size: "icon" })}
         >
           <MessageCircleIcon />
@@ -72,15 +68,19 @@
       <form
         onsubmit={(e) => {
           e.preventDefault();
-          tree.at().comment = commentText;
-          commentText = "";
+          // @ts-ignore
+          tree.at().comment = e.target.comment.value;
+          console.log(tree.at());
         }}
       >
         <Textarea
+          name="comment"
           class="min-h-64"
           autocapitalize="off"
           autocomplete="off"
-          bind:value={commentText}
+          value={tree.at()?.comment}
+          onfocusin={() => document.removeEventListener("keydown", tree.bind)}
+          onfocusout={() => document.addEventListener("keydown", tree.bind)}
         />
         <Button type="submit" class="mt-2 self-end" size="sm">Add</Button>
       </form>
@@ -89,6 +89,7 @@
   {#each Object.entries(nag) as [k, v]}
     <Tooltip.Root>
       <Tooltip.Trigger
+        onclick={() => (tree.at().nag = v)}
         class={buttonVariants({ variant: "outline", size: "icon" })}
       >
         {v.text}

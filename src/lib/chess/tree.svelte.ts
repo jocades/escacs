@@ -12,7 +12,7 @@ export interface MoveNode {
   variations?: number[]
   prev: Cursor
   comment?: string
-  nags?: string[]
+  nag?: { text: string; color: string }
 }
 
 export class Tree {

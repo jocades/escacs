@@ -3,6 +3,7 @@
   import type { Component } from "svelte";
   import { buttonVariants } from "../ui/button";
   import { page } from "$app/state";
+  import * as Tooltip from "$lib/components/ui/tooltip";
 
   interface SidebarItem {
     title: string;
@@ -28,14 +29,21 @@
   class="sticky top-0 flex flex-col gap-4 overflow-y-auto py-4 px-2 border-r border-border h-full"
 >
   {#each navItems as item}
-    <a
-      href={item.href}
-      class={buttonVariants({
-        size: "icon",
-        variant: page.url.pathname === item.href ? "secondary" : "ghost",
-      })}
-    >
-      <item.icon />
-    </a>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        <a
+          href={item.href}
+          class={buttonVariants({
+            size: "icon",
+            variant: page.url.pathname === item.href ? "secondary" : "ghost",
+          })}
+        >
+          <item.icon />
+        </a>
+      </Tooltip.Trigger>
+      <Tooltip.Content side="right">
+        <p>{item.title}</p>
+      </Tooltip.Content>
+    </Tooltip.Root>
   {/each}
 </aside>
