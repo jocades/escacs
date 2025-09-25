@@ -47,9 +47,11 @@
     //   engineActive = true;
     // });
 
-    document.addEventListener("keydown", tree.bind);
+    window.chess = chess;
+
+    tree.bind();
     return () => {
-      document.removeEventListener("keydown", tree.bind);
+      tree.unbind();
     };
   });
 
@@ -122,10 +124,8 @@
       <Chessboard {chess} {boardState} {onMove} />
     </div>
   </div>
-  <div class="flex flex-col gap-y-2 flex-grow">
+  <div class="flex flex-col gap-y-2">
     <div class="flex flex-1 bg-red-200"></div>
-    <!-- <Analysis {boardState} {chess} {tree} {infos} {onInfoClick} /> -->
-    <!-- <TreeViewTable {tree} /> -->
     <Notation {tree} />
   </div>
 </div>

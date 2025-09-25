@@ -7,51 +7,93 @@
   import * as Popover from "$lib/components/ui/popover";
   import { MessageCircleIcon } from "@lucide/svelte";
   import Textarea from "../ui/textarea/textarea.svelte";
+  import Separator from "../ui/separator/separator.svelte";
 
   const { tree }: { tree: Tree } = $props();
 
-  const pairs = $derived.by(() => {
-    const result = [];
-    for (let i = 0; i < tree.mainLine.length; i += 2) {
-      result.push([tree.mainLine[i], tree.mainLine[i + 1]]);
-    }
-    return result;
-  });
+  function toggler(init = false) {
+    let _v = $state(init);
+
+    return {
+      get value() {
+        return _v;
+      },
+      set value(v) {
+        _v = v;
+      },
+      toggle() {
+        _v = !_v;
+      },
+    };
+  }
+
+  const messageOpen = toggler(false);
 </script>
 
 {#snippet moveNumber(n: number)}
-  <span class="font-bold text-muted-foreground pr-0.5">{n}.</span>
+  <span class="font-bold text-muted-foreground">{n}.</span>
 {/snippet}
 
-{#snippet moveNode(node: MoveNode)}
-  <button
-    onclick={() => tree.setNode(node)}
-    class={cn(
-      "cursor-pointer px-0.5 hover:bg-accent rounded",
-      node === tree.at() && "bg-zinc-200/20",
-      // node.nag && `text-${node.nag.color}-500`,
-    )}
-    style:color={node.nag?.color}
-  >
-    {node.move.san}{node.nag?.text}
-  </button>
-  {#if node.comment}
-    <p class="text-sm text-muted-foreground px-1">{node.comment}</p>
+{#snippet linebreak()}
+  <div class="basis-[100%] h-0"></div>
+{/snippet}
+
+{#snippet moveNode(node: MoveNode, depth = 0)}
+  <div class={["flex items-center mb-=1"]}>
+    <button
+      onclick={() => tree.setNode(node)}
+      class={[
+        "cursor-pointer px-0.5 hover:bg-accent rounded",
+        node === tree.at() && "bg-zinc-200/20",
+      ]}
+      style:color={node.nag?.color}
+    >
+      {#if node.isWhite}
+        <span class="font-bold text-muted-foreground">
+          {node.moveNumber}.
+        </span>
+      {:else if depth > 0 && node.prev.var !== node.id.var}
+        <span class="font-bold text-muted-foreground">
+          {node.moveNumber}...
+        </span>
+      {/if}
+      {node.move.san}{node.nag?.text}
+    </button>
+    {#if node.comment}
+      <p class="text-sm text-muted-foreground px-1">{node.comment}</p>
+    {/if}
+  </div>
+  {#if node.variations}
+    {#each node.variations as v}
+      {@render linebreak()}
+      <div
+        class="flex flex-wrap border-l border-muted pl-2 ml-2"
+        style={`margin-left: calc(var(--spacing) * ${4 * (depth + 1)})`}
+      >
+        {#each tree.nodes[v] as vnode}
+          {@render moveNode(vnode, depth + 1)}
+        {/each}
+      </div>
+      {@render linebreak()}
+    {/each}
   {/if}
 {/snippet}
 
-<div class="flex flex-2 flex-wrap bg-sidebar p-2 gap-x-2.5 content-start">
-  {#each pairs as pair, index}
-    <div class="flex items-center">
-      {@render moveNumber(index + 1)}
-      {#if pair[0]}{@render moveNode(pair[0])}{/if}
-      {#if pair[1]}{@render moveNode(pair[1])}{/if}
-    </div>
+<div class="flex flex-2 flex-wrap bg-sidebar p-2 content-start">
+  {#each tree.mainLine as node}
+    {@render moveNode(node)}
   {/each}
 </div>
 
 <div class="flex space-x-2">
-  <Popover.Root>
+  <Popover.Root
+    open={messageOpen.value}
+    onOpenChange={(v) => {
+      messageOpen.value = v;
+      if (v) tree.unbind();
+      else tree.bind();
+    }}
+  >
     <Tooltip.Root>
       <Popover.Trigger>
         <Tooltip.Trigger
@@ -64,32 +106,35 @@
         <p>Comment</p>
       </Tooltip.Content>
     </Tooltip.Root>
-    <Popover.Content class="flex flex-col min-h-64 p-2">
+    <Popover.Content class="flex flex-col p-2">
       <form
         onsubmit={(e) => {
           e.preventDefault();
           // @ts-ignore
           tree.at().comment = e.target.comment.value;
-          console.log(tree.at());
+          console.log($state.snapshot(tree.nodes));
+          messageOpen.toggle();
         }}
       >
         <Textarea
           name="comment"
-          class="min-h-64"
+          class="h-64"
           autocapitalize="off"
           autocomplete="off"
           value={tree.at()?.comment}
-          onfocusin={() => document.removeEventListener("keydown", tree.bind)}
-          onfocusout={() => document.addEventListener("keydown", tree.bind)}
         />
         <Button type="submit" class="mt-2 self-end" size="sm">Add</Button>
       </form>
     </Popover.Content>
   </Popover.Root>
+  <Separator orientation="vertical" />
   {#each Object.entries(nag) as [k, v]}
     <Tooltip.Root>
       <Tooltip.Trigger
-        onclick={() => (tree.at().nag = v)}
+        onclick={() => {
+          const node = tree.at();
+          if (node) node.nag = v;
+        }}
         class={buttonVariants({ variant: "outline", size: "icon" })}
       >
         {v.text}

@@ -1,5 +1,4 @@
 import type { Chess, Move } from "chess.js"
-import type { Key, Color } from "chessground/types"
 
 export interface Cursor {
   var: number
@@ -9,8 +8,11 @@ export interface Cursor {
 export interface MoveNode {
   id: Cursor
   move: Move
-  variations?: number[]
+  ply: number
+  moveNumber: number
+  isWhite: boolean
   prev: Cursor
+  variations?: number[]
   comment?: string
   nag?: { text: string; color: string }
 }
@@ -54,17 +56,33 @@ export class Tree {
     this.setCursor(node.id.var, node.id.num)
   }
 
+  private computeMoveInfo(prev?: MoveNode) {
+    const ply = prev ? prev.ply + 1 : 1
+    return {
+      ply,
+      moveNumber: Math.ceil(ply / 2),
+      isWhite: ply % 2 === 1,
+    }
+  }
+
   add(move: Move) {
     const existing = this.getNext()
 
     if (!existing) {
       // new move
+      const prevNode = this.at()
+      const { ply, moveNumber, isWhite } = this.computeMoveInfo(prevNode)
+
       this.line.push({
         id: { var: this.cursor.var, num: this.cursor.num + 1 },
         move,
         prev: { var: this.cursor.var, num: this.cursor.num },
+        ply,
+        moveNumber,
+        isWhite,
       })
       this.cursor.num++
+      console.log("new move", $state.snapshot(this.at()))
       return
     }
 
@@ -75,19 +93,28 @@ export class Tree {
     if (node) {
       // existing variation
       this.setCursor(node.id.var, node.id.num)
+      console.log("existing variation", $state.snapshot(this.at()))
     } else {
       // new variation
       if (!existing.variations) existing.variations = []
       const v = this.nodes.length
       existing.variations.push(v)
+
+      const prevNode = this.get(existing.prev.var, existing.prev.num)
+      const { ply, moveNumber, isWhite } = this.computeMoveInfo(prevNode)
+
       this.nodes[v] = [
         {
           id: { var: v, num: 0 },
           move,
           prev: existing.prev,
+          ply,
+          moveNumber,
+          isWhite,
         },
       ]
       this.setCursor(v, 0)
+      console.log("new variation", $state.snapshot(this.at()))
     }
   }
 
@@ -124,12 +151,18 @@ export class Tree {
 
   loadPgn(chess: Chess, pgn: string) {
     chess.loadPgn(pgn)
-    this.nodes[0] = chess.history({ verbose: true }).map((move, i) => ({
-      id: { var: 0, num: i },
-      move,
-      prev: { var: 0, num: i - 1 },
-    }))
-    this.setCursor(0, this.mainLine.length - 1)
+    this.nodes[0] = chess.history({ verbose: true }).map((move, i) => {
+      const ply = i + 1
+      return {
+        id: { var: 0, num: i },
+        move,
+        prev: { var: 0, num: i - 1 },
+        ply,
+        moveNumber: Math.ceil(ply / 2),
+        isWhite: ply % 2 === 1,
+      }
+    })
+    this.first()
   }
 
   isStart() {
@@ -163,7 +196,7 @@ export class Tree {
     }, 300)
   }
 
-  bind = (e: KeyboardEvent) => {
+  private onkeydown = (e: KeyboardEvent) => {
     switch (e.key) {
       case "ArrowLeft":
         this.prev()
@@ -180,5 +213,13 @@ export class Tree {
       default:
         break
     }
+  }
+
+  bind() {
+    document.addEventListener("keydown", this.onkeydown)
+  }
+
+  unbind() {
+    document.removeEventListener("keydown", this.onkeydown)
   }
 }
