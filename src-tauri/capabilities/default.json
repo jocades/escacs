@@ -8,7 +8,14 @@
     "opener:default",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://explorer.lichess.ovh/**" }, { "url": "https://lichess.org/**" }]
+      "allow": [
+        {
+          "url": "https://explorer.lichess.ovh/**"
+        },
+        {
+          "url": "https://lichess.org/**"
+        }
+      ]
     }
   ]
 }

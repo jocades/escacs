@@ -47,8 +47,6 @@
     //   engineActive = true;
     // });
 
-    window.chess = chess;
-
     tree.bind();
     return () => {
       tree.unbind();

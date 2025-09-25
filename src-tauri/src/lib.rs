@@ -1,11 +1,16 @@
-use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
-    Arc,
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
+use anyhow::Context;
 use shakmaty::{
     fen::Fen, san::San, uci::UciMove, CastlingMode, Chess, Color, FromSetup, Position, Setup,
 };
+use sqlx::{migrate::MigrateDatabase, Pool, Sqlite, SqlitePool};
 use tauri::{Builder, Manager, State};
 use tokio::{
     select,
@@ -13,17 +18,21 @@ use tokio::{
 };
 use tracing::{debug, error, Instrument};
 
-use crate::chess::{
-    openings::{find_opening, gather_openings},
-    search, Engine, Go, Info, Search,
+use crate::{
+    chess::{
+        openings::{find_opening, gather_openings},
+        search, Engine, Go, Info, Search,
+    },
+    db::Database,
 };
 
 pub mod chess;
-pub mod database;
+pub mod db;
 
-struct AppState {
+pub struct AppState {
     manager: Arc<Mutex<EngineManager>>,
     client_restart_count: AtomicUsize,
+    db: Database,
 }
 
 static mut CALL_COUNT: usize = 0;
@@ -217,6 +226,28 @@ fn test_obj(value: serde_json::Map<String, serde_json::Value>) {
     debug!(?value);
 }
 
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    setup_logging();
+    gather_openings();
+
+    let dir = std::env::home_dir()
+        .context("home env variable is not set")?
+        .join(".escacs");
+
+    std::fs::create_dir_all(&dir)?;
+
+    let db = tauri::async_runtime::block_on(Database::connect_and_migrate(dir.join("data.db")))?;
+
+    let state = AppState {
+        manager: Arc::new(Mutex::new(EngineManager::default())),
+        client_restart_count: AtomicUsize::default(),
+        db,
+    };
+
+    app.manage(state);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     Builder::default()
@@ -229,17 +260,10 @@ pub fn run() {
             test_what,
             find_opening,
             test_obj,
+            db::insert_study,
+            db::get_studies,
         ])
-        .setup(|app| {
-            setup_logging();
-            gather_openings();
-            let state = AppState {
-                manager: Arc::new(Mutex::new(EngineManager::default())),
-                client_restart_count: AtomicUsize::default(),
-            };
-            app.manage(state);
-            Ok(())
-        })
+        .setup(setup)
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

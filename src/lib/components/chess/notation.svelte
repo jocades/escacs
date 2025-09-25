@@ -5,9 +5,16 @@
   import { nag } from "$lib/chess/util";
   import * as Tooltip from "$lib/components/ui/tooltip";
   import * as Popover from "$lib/components/ui/popover";
-  import { MessageCircleIcon } from "@lucide/svelte";
+  import {
+    DownloadIcon,
+    MessageCircleIcon,
+    SaveIcon,
+    UploadCloudIcon,
+    UploadIcon,
+  } from "@lucide/svelte";
   import Textarea from "../ui/textarea/textarea.svelte";
   import Separator from "../ui/separator/separator.svelte";
+  import { invoke } from "@tauri-apps/api/core";
 
   const { tree }: { tree: Tree } = $props();
 
@@ -144,4 +151,45 @@
       </Tooltip.Content>
     </Tooltip.Root>
   {/each}
+  <Separator orientation="vertical" />
+  <Tooltip.Root>
+    <Tooltip.Trigger
+      onclick={async () => {
+        // console.log(JSON.stringify($state.snapshot(tree.nodes)));
+        const study = {
+          name: "Jordi's Study",
+          treeJson: JSON.stringify($state.snapshot(tree.nodes)),
+        };
+        const id = await invoke("insert_study", { study });
+        console.log({ id });
+      }}
+      class={buttonVariants({ variant: "outline", size: "icon" })}
+    >
+      <!-- <SaveIcon /> -->
+      <!-- <UploadIcon /> -->
+      <UploadCloudIcon />
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Upload</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
+
+  <Tooltip.Root>
+    <Tooltip.Trigger
+      onclick={async () => {
+        /* const study = {
+          name: "Jordi's Study",
+          treeJson: JSON.stringify($state.snapshot(tree.nodes)),
+        };
+        const id = await invoke("insert_study", { study });
+        console.log({ id }); */
+      }}
+      class={buttonVariants({ variant: "outline", size: "icon" })}
+    >
+      <DownloadIcon />
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Download</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
 </div>
